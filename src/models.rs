@@ -41,3 +41,7 @@ pub struct Values {
     pub value: Option<String>,
     pub value_id: Option<i64>,
 }
+
+// TODO: It may be necessary to break many-to-many values out to
+// RawValue (plain text, url, file, etc),
+// ChoiceValue (Single and multiple choice),
