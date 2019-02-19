@@ -27,25 +27,26 @@ VALUES
   (4, 0, 'File Size', 'usize'),
   (5, 0, 'Tags', 'multiselect');
 
+
+CREATE TABLE property_select_choices(
+  id BIGINT PRIMARY KEY DEFAULT id_generator(),
+  property_id BIGINT NOT NULL REFERENCES properties(id),
+  display TEXT NOT NULL,
+  created_by BIGINT NOT NULL REFERENCES users(id) DEFAULT 3,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE "values" (
   "object_id" TEXT NOT NULL REFERENCES objects(id),
   property_id BIGINT NOT NULL REFERENCES properties(id),
   created_by BIGINT NOT NULL REFERENCES users(id) DEFAULT 3,
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "value" TEXT NOT NULL,
-  PRIMARY KEY ("object_id", property_id)
+  "value" TEXT,
+  value_id BIGINT REFERENCES property_select_choices(id),
+  PRIMARY KEY ("object_id", property_id, value_id)
 );
 
-CREATE TABLE "property_select_choices" (
-  id SERIAL,
-  property_id BIGINT NOT NULL REFERENCES properties(id),
-  display TEXT NOT NULL,
-  created_by BIGINT NOT NULL REFERENCES users(id) DEFAULT 3,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id, property_id)
-);
-
-INSERT INTO "property_select_choices"(property_id, display, created_by)
+INSERT INTO property_select_choices(property_id, display, created_by)
 VALUES
   (5, 'Illustration', 0),
   (5, 'Branding', 0),

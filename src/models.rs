@@ -25,7 +25,7 @@ pub struct Property {
 
 #[derive(Queryable)]
 pub struct PropertySelectChoice {
-    pub id: i32,
+    pub id: i64,
     pub property_id: i64,
     pub display: String,
     pub created_by: i64,
@@ -38,5 +38,6 @@ pub struct Values {
     pub property_id: i64,
     pub created_by: i64,
     pub created_at: std::time::SystemTime,
-    pub value: String,
+    pub value: Option<String>,
+    pub value_id: Option<i64>,
 }
