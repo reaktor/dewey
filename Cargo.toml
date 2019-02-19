@@ -1,0 +1,14 @@
+[package]
+name = "actix_upload_s3"
+version = "0.1.0"
+authors = ["Cole R Lawrence <msgzht@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+env_logger = "*"
+futures = "0.1"
+
+actix = "0.7"
+actix-web = "0.7"
+diesel = { version = "1.0.0", features = ["postgres"] }
+dotenv = "0.9.0"

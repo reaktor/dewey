@@ -1,0 +1,22 @@
+version: '3'
+
+services:
+ minio1:
+  image: minio/minio
+  volumes:
+   - ./objects:/export
+   - ./.minio:/root/.minio
+  ports:
+   - "9000:9000"
+  environment:
+   MINIO_ACCESS_KEY: colelawrence
+   MINIO_SECRET_KEY: supercookiespassword
+  command: server /export
+ postgres1:
+  image: postgres
+  volumes:
+   - ./db:/var/lib/postgresql/data
+  ports:
+   - "5432:5432"
+  environment:
+   POSTGRES_PASSWORD: docker
