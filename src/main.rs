@@ -1,7 +1,18 @@
+#[macro_use]
+extern crate diesel;
+extern crate dotenv;
 extern crate actix_web;
+
+use diesel::prelude::*;
+use diesel::pg::PgConnection;
+use dotenv::dotenv;
+use std::env;
 
 use std::fs;
 use std::io::Write;
+
+pub mod schema;
+pub mod models;
 
 use actix_web::{
     dev, error, http, middleware, multipart, server, App, Error, FutureResponse, HttpMessage,

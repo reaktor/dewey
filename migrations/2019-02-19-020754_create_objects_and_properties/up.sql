@@ -6,17 +6,19 @@ VALUES
 CREATE TABLE objects (
   id TEXT PRIMARY KEY,
   created_by BIGINT NOT NULL REFERENCES users(id) DEFAULT 3,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE properties (
   id BIGINT PRIMARY KEY DEFAULT id_generator(),
   created_by BIGINT NOT NULL REFERENCES users(id) DEFAULT 3,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   display TEXT NOT NULL,
   "type" TEXT NOT NULL
 );
 
+-- These are the default properties which can be automatically
+-- assigned by the system during upload.
 INSERT INTO properties(id, created_by, display, "type")
 VALUES
   (1, 0, 'Filename', 'text'),
@@ -29,7 +31,7 @@ CREATE TABLE "values" (
   "object_id" TEXT NOT NULL REFERENCES objects(id),
   property_id BIGINT NOT NULL REFERENCES properties(id),
   created_by BIGINT NOT NULL REFERENCES users(id) DEFAULT 3,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "value" TEXT NOT NULL,
   PRIMARY KEY ("object_id", property_id)
 );
@@ -39,7 +41,7 @@ CREATE TABLE "property_select_choices" (
   property_id BIGINT NOT NULL REFERENCES properties(id),
   display TEXT NOT NULL,
   created_by BIGINT NOT NULL REFERENCES users(id) DEFAULT 3,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id, property_id)
 );
 

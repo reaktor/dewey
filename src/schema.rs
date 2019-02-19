@@ -2,7 +2,7 @@ table! {
     objects (id) {
         id -> Text,
         created_by -> Int8,
-        created_at -> Timestamp,
+        created_at -> Timestamptz,
     }
 }
 
@@ -10,7 +10,7 @@ table! {
     properties (id) {
         id -> Int8,
         created_by -> Int8,
-        created_at -> Timestamp,
+        created_at -> Timestamptz,
         display -> Text,
         #[sql_name = "type"]
         type_ -> Text,
@@ -23,7 +23,7 @@ table! {
         property_id -> Int8,
         display -> Text,
         created_by -> Int8,
-        created_at -> Timestamp,
+        created_at -> Timestamptz,
     }
 }
 
@@ -41,7 +41,7 @@ table! {
         object_id -> Text,
         property_id -> Int8,
         created_by -> Int8,
-        created_at -> Timestamp,
+        created_at -> Timestamptz,
         value -> Text,
     }
 }
