@@ -1,8 +1,19 @@
 table! {
+    choice_values (object_id, property_id, value_id) {
+        object_id -> Text,
+        property_id -> Int8,
+        created_by -> Int8,
+        created_at -> Timestamptz,
+        value_id -> Int8,
+    }
+}
+
+table! {
     objects (id) {
         id -> Text,
         created_by -> Int8,
         created_at -> Timestamptz,
+        extension -> Text,
     }
 }
 
@@ -11,17 +22,47 @@ table! {
         id -> Int8,
         created_by -> Int8,
         created_at -> Timestamptz,
+        ord -> Float4,
         display -> Text,
-        #[sql_name = "type"]
-        type_ -> Text,
+        property_type -> Property_type,
     }
 }
 
 table! {
-    property_select_choices (id) {
+    property_value_choices (id) {
         id -> Int8,
         property_id -> Int8,
         display -> Text,
+        created_by -> Int8,
+        created_at -> Timestamptz,
+    }
+}
+
+table! {
+    relation_values (object_id, property_id, target_id) {
+        object_id -> Text,
+        property_id -> Int8,
+        target_id -> Text,
+        created_by -> Int8,
+        created_at -> Timestamptz,
+    }
+}
+
+table! {
+    text_values (object_id, property_id) {
+        object_id -> Text,
+        property_id -> Int8,
+        value -> Text,
+        created_by -> Int8,
+        created_at -> Timestamptz,
+    }
+}
+
+table! {
+    timestamptz_values (object_id, property_id) {
+        object_id -> Text,
+        property_id -> Int8,
+        value -> Nullable<Timestamptz>,
         created_by -> Int8,
         created_at -> Timestamptz,
     }
@@ -36,30 +77,30 @@ table! {
     }
 }
 
-table! {
-    values (object_id, property_id, value_id) {
-        object_id -> Text,
-        property_id -> Int8,
-        created_by -> Int8,
-        created_at -> Timestamptz,
-        value -> Nullable<Text>,
-        value_id -> Int8,
-    }
-}
-
+joinable!(choice_values -> objects (object_id));
+joinable!(choice_values -> properties (property_id));
+joinable!(choice_values -> property_value_choices (value_id));
+joinable!(choice_values -> users (created_by));
 joinable!(objects -> users (created_by));
 joinable!(properties -> users (created_by));
-joinable!(property_select_choices -> properties (property_id));
-joinable!(property_select_choices -> users (created_by));
-joinable!(values -> objects (object_id));
-joinable!(values -> properties (property_id));
-joinable!(values -> property_select_choices (value_id));
-joinable!(values -> users (created_by));
+joinable!(property_value_choices -> properties (property_id));
+joinable!(property_value_choices -> users (created_by));
+joinable!(relation_values -> properties (property_id));
+joinable!(relation_values -> users (created_by));
+joinable!(text_values -> objects (object_id));
+joinable!(text_values -> properties (property_id));
+joinable!(text_values -> users (created_by));
+joinable!(timestamptz_values -> objects (object_id));
+joinable!(timestamptz_values -> properties (property_id));
+joinable!(timestamptz_values -> users (created_by));
 
 allow_tables_to_appear_in_same_query!(
+    choice_values,
     objects,
     properties,
-    property_select_choices,
+    property_value_choices,
+    relation_values,
+    text_values,
+    timestamptz_values,
     users,
-    values,
 );

@@ -10,38 +10,7 @@ pub struct User {
 #[derive(Queryable)]
 pub struct Object {
     pub id: String,
+    pub extension: String,
     pub created_by: i64,
     pub created_at: std::time::SystemTime,
 }
-
-#[derive(Queryable)]
-pub struct Property {
-    pub id: i64,
-    pub created_by: i64,
-    pub created_at: std::time::SystemTime,
-    pub display: String,
-    pub type_: String,
-}
-
-#[derive(Queryable)]
-pub struct PropertySelectChoice {
-    pub id: i64,
-    pub property_id: i64,
-    pub display: String,
-    pub created_by: i64,
-    pub created_at: std::time::SystemTime,
-}
-
-#[derive(Queryable)]
-pub struct Values {
-    pub object_id: String,
-    pub property_id: i64,
-    pub created_by: i64,
-    pub created_at: std::time::SystemTime,
-    pub value: Option<String>,
-    pub value_id: Option<i64>,
-}
-
-// TODO: It may be necessary to break many-to-many values out to
-// RawValue (plain text, url, file, etc),
-// ChoiceValue (Single and multiple choice),
