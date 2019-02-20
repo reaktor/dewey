@@ -2,9 +2,9 @@ table! {
     choice_values (object_id, property_id, value_id) {
         object_id -> Text,
         property_id -> Int8,
+        value_id -> Int8,
         created_by -> Int8,
         created_at -> Timestamptz,
-        value_id -> Int8,
     }
 }
 
