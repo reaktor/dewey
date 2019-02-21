@@ -2,6 +2,12 @@
 **/*.rs.bk
 
 /db
+/mem
 /.minio
 /objects
 .env
+
+/static/uploads/*
+!/static/uploads/.gitkeep
+
+**/_archive/**

@@ -26,7 +26,7 @@ pub fn save_file(field: multipart::Field<dev::Payload>) -> Box<Future<Item = i64
         "Saving file: filename {:?}; extension: {:?}",
         filename, fileext
     );
-    let file_path_string = format!("upload{}", fileext);
+    let file_path_string = format!("./static/uploads/{}", filename);
     let mut file = match fs::File::create(file_path_string) {
         Ok(file) => file,
         Err(e) => return Box::new(future::err(error::ErrorInternalServerError(e))),

@@ -2,7 +2,7 @@ version: '3'
 
 services:
  minio1:
-  image: minio/minio
+  image: minio/minio:RELEASE.2019-02-20T22-44-29Z
   volumes:
    - ./objects:/export
    - ./.minio:/root/.minio
@@ -13,10 +13,18 @@ services:
    MINIO_SECRET_KEY: supercookiespassword
   command: server /export
  postgres1:
-  image: postgres
+  image: postgres:11.2-alpine
   volumes:
    - ./db:/var/lib/postgresql/data
   ports:
    - "5432:5432"
   environment:
    POSTGRES_PASSWORD: docker
+ redis1:
+  image: redis:5.0-alpine
+  volumes:
+   - ./mem:/data
+   - ./config/redis:/config
+  ports:
+   - "6379:6379"
+  command: redis-server /config/redis.conf
