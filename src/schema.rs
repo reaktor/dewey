@@ -69,6 +69,18 @@ table! {
 }
 
 table! {
+    user_tokens (user_id) {
+        user_id -> Int8,
+        google_resource_id -> Text,
+        version -> Int4,
+        created_at -> Timestamptz,
+        access_token -> Text,
+        refresh_token -> Text,
+        token_expiration -> Timestamptz,
+    }
+}
+
+table! {
     users (id) {
         id -> Int8,
         google_resource_id -> Nullable<Text>,
@@ -93,6 +105,7 @@ joinable!(text_values -> users (created_by));
 joinable!(timestamptz_values -> objects (object_id));
 joinable!(timestamptz_values -> properties (property_id));
 joinable!(timestamptz_values -> users (created_by));
+joinable!(user_tokens -> users (user_id));
 
 allow_tables_to_appear_in_same_query!(
     choice_values,
@@ -102,5 +115,6 @@ allow_tables_to_appear_in_same_query!(
     relation_values,
     text_values,
     timestamptz_values,
+    user_tokens,
     users,
 );

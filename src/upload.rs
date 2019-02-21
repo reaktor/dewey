@@ -7,6 +7,7 @@ use actix_web::{
 
 use std::fs;
 use std::io::Write;
+use super::State;
 
 /// from payload, save file
 pub fn save_file(field: multipart::Field<dev::Payload>) -> Box<Future<Item = i64, Error = Error>> {
@@ -63,7 +64,7 @@ pub fn handle_multipart_item(
     }
 }
 
-pub fn upload(req: HttpRequest) -> FutureResponse<HttpResponse> {
+pub fn upload(req: HttpRequest<State>) -> FutureResponse<HttpResponse> {
     Box::new(
         req.multipart()
             .map_err(error::ErrorInternalServerError)
