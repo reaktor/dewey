@@ -1,7 +1,7 @@
 #[derive(Debug)]
 pub struct GoogleAccessToken {
-    access_token: String,
-    expires_at: DateTime<Utc>,
+    pub access_token: String,
+    pub expires_at: DateTime<Utc>,
 }
 
 #[derive(Deserialize, Debug)]

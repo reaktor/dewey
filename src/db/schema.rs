@@ -1,3 +1,12 @@
+// define your enum
+#[derive(Debug, DbEnum)]
+pub enum PropertyType {
+    Timestamptz,  // All variants must be fieldless
+    Text,
+    Relation,
+    Choice,
+}
+
 table! {
     choice_values (object_id, property_id, value_id) {
         object_id -> Text,
@@ -18,13 +27,15 @@ table! {
 }
 
 table! {
+    use diesel::sql_types::{Float4, Int8, Text, Timestamptz};
+    use super::PropertyTypeMapping;
     properties (id) {
         id -> Int8,
         created_by -> Int8,
         created_at -> Timestamptz,
         ord -> Float4,
         display -> Text,
-        property_type -> Property_type,
+        property_type -> PropertyTypeMapping,
     }
 }
 

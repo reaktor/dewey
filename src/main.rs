@@ -2,7 +2,11 @@
 #[macro_use]
 extern crate diesel;
 #[macro_use]
+extern crate diesel_derive_enum;
+#[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate redis_async;
 extern crate actix_web;
 extern crate dotenv;
 #[macro_use]
@@ -14,15 +18,11 @@ extern crate log;
 // use diesel::pg::PgConnection;
 // use std::env;
 
-// Need to fix schema enum types and then we can enable it
-// pub mod schema;
-pub mod models;
-
 use actix_redis::RedisSessionBackend;
 use actix_web::middleware::session::{RequestSession, SessionStorage};
 use actix_web::{http, Result};
 use actix_web::{middleware, server, App, HttpRequest, HttpResponse};
-
+use actix::Actor;
 mod upload;
 
 fn index(req: &HttpRequest<State>) -> Result<HttpResponse> {
@@ -101,6 +101,11 @@ fn login_google(req: &HttpRequest<State>) -> Result<HttpResponse> {
 }
 
 mod google_oauth;
+mod google_people_client;
+
+fn send_error<T: Debug + Display>(e: T) -> Error {
+    error::ErrorInternalServerError(format!("Send error: {}; {:?}", e, e))
+}
 
 /// Manually revoke application tokens https://myaccount.google.com/permissions
 fn login_google_callback(request: &HttpRequest<State>) -> Result<HttpResponse> {
@@ -116,28 +121,70 @@ fn login_google_callback(request: &HttpRequest<State>) -> Result<HttpResponse> {
 
     use google_oauth::ExchangeResult::*;
 
+    let session_mgr: Addr<session_manager::SessionManager> = request.state().sessions.clone();
+
     match google_oauth::exchange_code_for_token(&code) {
         AccessAndRefreshTokens { access, refresh } => {
             // TODO: Insert refresh tokens and create session
-            return Ok(HttpResponse::Found().header("Location", "/?login=refreshed").finish())
-        },
+            return Ok(HttpResponse::Found()
+                .header("Location", "/?login=refreshed")
+                .finish());
+        }
         AccessTokenOnly(access) => {
-            // TODO: Create session and link to refresh tokens
-            return Ok(HttpResponse::Found().header("Location", "/?login=accessonly").finish())
-        },
+            // We need this to all be async!
+            // We need this to all be async!
+            // We need this to all be async!
+            // We need this to all be async!
+            // We need this to all be async!
+            // We need this to all be async!
+            // We need this to all be async!
+            // We need this to all be async!
+            // We need this to all be async!
+            // We need this to all be async!
+            // We need this to all be async!
+            // We need this to all be async!
+            // We need this to all be async!
+            /*
+            session_mgr.send(session_manager::CreateSession {
+                access_token: access,
+                refresh_token: None,
+                ip: request.connection_info().remote().unwrap_or("").to_owned(),
+                channel: String::from("web"),
+            }).map_err(send_error)
+            .and_then(|res: session_manager::CreateSessionResult| {
+                use session_manager::CreateSessionResult::*;
+                match res {
+                    Success(user_session) => {
+
+                    },
+                    UserNotFoundNeedsRefreshToken => {
+                        // TODO: Create session and link to refresh tokens
+                        return Ok(HttpResponse::Found()
+                            .header("Location", "/?login=accessonly")
+                            .finish());
+
+                    }
+                }
+            })
+            */
+        }
         FetchError(error) => {
             error!("Error fetching code: {}", error);
-        },
+        }
         ParsingError(error) => {
             error!("Error parsing exchange result: {}", error);
-        },
+        }
         GoogleError(error) => {
             info!("Error logging in user: {}", error);
-            return Ok(HttpResponse::Found().header("Location", "/?login=canceled").finish())
+            return Ok(HttpResponse::Found()
+                .header("Location", "/?login=canceled")
+                .finish());
         }
     }
 
-    Ok(HttpResponse::Found().header("Location", "/?login=error").finish())
+    Ok(HttpResponse::Found()
+        .header("Location", "/?login=error")
+        .finish())
 }
 
 pub fn get_redirect_url(redirect_uri: &str, state: Option<&str>, domain: Option<&str>) -> String {
@@ -161,14 +208,19 @@ fn logout(req: &HttpRequest<State>) -> Result<HttpResponse> {
     Ok(HttpResponse::Found().header("location", "/").finish())
 }
 
+use actix_redis::RedisActor;
 mod db;
-use db::{CreateUser, DbExecutor};
+use db::DbExecutor;
+mod session_manager;
+use session_manager::{SessionManager, IsValidSession, UpdateUserSession, ValidUserSession};
 
 use actix::{Addr, SyncArbiter};
 
 /// State with DbExecutor address
 pub struct State {
     db: Addr<DbExecutor>,
+    mem: Addr<RedisActor>,
+    sessions: Addr<SessionManager>,
 }
 
 mod logging;
@@ -183,7 +235,15 @@ fn main() {
     let pool = diesel::r2d2::Pool::new(manager).unwrap();
 
     // Start db executor actors
-    let addr = SyncArbiter::start(3, move || DbExecutor(pool.clone()));
+    let db_addr = SyncArbiter::start(3, move || DbExecutor(pool.clone()));
+    let redis_addr = actix_redis::RedisActor::start(dotenv!("REDIS_URL"));
+
+    let session_actor = SessionManager {
+        redis: redis_addr.clone(),
+        pg: db_addr.clone(),
+    };
+
+    let session_addr = session_actor.start();
 
     server::new(move || {
         vec![
@@ -196,25 +256,29 @@ fn main() {
                         .show_files_listing(),
                 )
                 .boxed(),
-            App::with_state(State { db: addr.clone() })
-                .middleware(middleware::Logger::new(r#"%T "%r" %s %b "%{Referer}i""#))
-                .middleware(SessionStorage::new(
-                    RedisSessionBackend::new(dotenv!("REDIS_URL"), &[0; 32])
-                        .cookie_secure(true) // cookies require https
-                        .cookie_name("sess"),
-                ))
-                .resource("/upload", |r| {
-                    r.method(http::Method::POST).with(upload::upload)
-                })
-                .scope("/login", |scope| {
-                    scope
-                        .resource("", |r| r.f(login))
-                        .resource("/google/callback", |r| r.f(login_google_callback))
-                        .resource("/google", |r| r.f(login_google))
-                })
-                .resource("/logout", |r| r.f(logout))
-                .resource("/", |r| r.f(index))
-                .boxed(),
+            App::with_state(State {
+                db: db_addr.clone(),
+                mem: redis_addr.clone(),
+                sessions: session_addr.clone(),
+            })
+            .middleware(middleware::Logger::new(r#"%T "%r" %s %b "%{Referer}i""#))
+            .middleware(SessionStorage::new(
+                RedisSessionBackend::new(dotenv!("REDIS_URL"), &[0; 32])
+                    .cookie_secure(true) // cookies require https
+                    .cookie_name("sess"),
+            ))
+            .resource("/upload", |r| {
+                r.method(http::Method::POST).with(upload::upload)
+            })
+            .scope("/login", |scope| {
+                scope
+                    .resource("", |r| r.f(login))
+                    .resource("/google/callback", |r| r.f(login_google_callback))
+                    .resource("/google", |r| r.f(login_google))
+            })
+            .resource("/logout", |r| r.f(logout))
+            .resource("/", |r| r.f(index))
+            .boxed(),
         ]
     })
     .bind("127.0.0.1:8088")

@@ -1,0 +1,1 @@
+DROP VIEW view_user_id_token_versions;
