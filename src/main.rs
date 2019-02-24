@@ -14,77 +14,122 @@ extern crate dotenv_codegen;
 #[macro_use]
 extern crate log;
 
+extern crate openssl_probe;
+
 // use diesel::prelude::*;
 // use diesel::pg::PgConnection;
 // use std::env;
 
+use std::fmt::{Debug, Display};
+
+use actix::Actor;
 use actix_redis::RedisSessionBackend;
 use actix_web::middleware::session::{RequestSession, SessionStorage};
-use actix_web::{http, Result};
+use actix_web::{error, http, Error, FutureResponse, Result};
 use actix_web::{middleware, server, App, HttpRequest, HttpResponse};
-use actix::Actor;
 mod upload;
+use futures::future;
+use futures::future::Future;
 
-fn index(req: &HttpRequest<State>) -> Result<HttpResponse> {
-    Ok(HttpResponse::Ok()
-        .header(http::header::CONTENT_TYPE, "text/html")
-        .body(format!(
-            r#"<html>
+fn index(req: &HttpRequest<State>) -> Box<Future<Item = HttpResponse, Error = Error>> {
+    Box::new(
+        is_signed_in_guard(req).and_then(move |signin_state: SigninState| {
+            Ok(HttpResponse::Ok()
+                .header(http::header::CONTENT_TYPE, "text/html")
+                .body(format!(
+                    r#"<html>
 <head>
     <title>Collect</title>
-    <link rel="stylesheet" href="/static/app.css"/>
+    <link rel="stylesheet" href="/static/app.css?3"/>
 </head>
 <body class="page">
     <h1>Collect</h1>
     {}
 </body>
 </html>"#,
-            if let Some(auth) = req.session().get::<UserAuth>("auth")? {
-                format!(
-                    "Hello {}<br><a href=\"/logout\">Log out</a>",
-                    auth.user_name
-                )
-            } else {
-                "<a href=\"/login\">Log in</a>".to_string()
-            }
-        )))
+                    match signin_state {
+                        SigninState::Valid(auth) => format!(
+                            "You're logged in<br>{}<br><a href=\"/logout\">Log out</a>",
+                            serde_json::to_string(&auth).unwrap()
+                        ),
+                        SigninState::SignedOutByThirdParty => {
+                            "<div class=\"flash flash-info\">Your account has been signed out by another location</div><br><a href=\"/login\">Log in</a>".to_string()
+                        }
+                        SigninState::NotSignedIn => "<a href=\"/login\">Log in</a>".to_string(),
+                    }
+                )))
+        }),
+    )
 }
 
 mod rand_util;
 
-#[derive(Deserialize, Serialize)]
-struct UserAuth {
-    user_id: i64,
-    user_name: String,
-    version: i32,
+fn is_valid(
+    user_session: &ValidUserSession,
+    session_mgr: &Addr<SessionManager>,
+) -> impl Future<Item = bool, Error = Error> {
+    session_mgr
+        .send(session_manager::IsValidSession(user_session.clone()))
+        .flatten()
 }
 
-fn is_valid(user_auth: &UserAuth) -> bool {
-    // TODO: check if version is up to date compared to database
-    true
+enum SigninState {
+    Valid(ValidUserSession),
+    SignedOutByThirdParty,
+    NotSignedIn,
 }
 
-fn login(req: &HttpRequest<State>) -> Result<HttpResponse> {
-    if let Some(auth) = req.session().get::<UserAuth>("auth")? {
-        if is_valid(&auth) {
-            Ok(HttpResponse::Found().header("location", "/").finish())
-        } else {
-            req.session().remove("auth");
-            Ok(HttpResponse::Found()
+use futures::IntoFuture;
+
+fn is_signed_in_guard(req: &HttpRequest<State>) -> impl Future<Item = SigninState, Error = Error> {
+    let req_session = req.session();
+    let session_mgr: Addr<SessionManager> = req.state().sessions.clone();
+
+    req_session
+        .get::<ValidUserSession>("auth")
+        .into_future()
+        .and_then(move |auth_opt| {
+            info!("User request's auth = {:?}", auth_opt);
+            if let Some(auth) = auth_opt {
+                future::Either::A(is_valid(&auth, &session_mgr).and_then(
+                    move |sign_in_valid: bool| {
+                        info!("Checking if session is auth: {:?}; {:?}", auth, sign_in_valid);
+                        if sign_in_valid {
+                            future::ok(SigninState::Valid(auth))
+                        } else {
+                            req_session.remove("auth");
+                            future::ok(SigninState::SignedOutByThirdParty)
+                        }
+                    },
+                ))
+            } else {
+                // no login associated with this cookie
+                future::Either::B(future::ok(SigninState::NotSignedIn))
+            }
+        })
+}
+
+fn login(req: &HttpRequest<State>) -> Box<Future<Item = HttpResponse, Error = Error>> {
+    let req_session = req.session();
+
+    Box::new(is_signed_in_guard(req).map(|signin_state: SigninState| {
+        match signin_state {
+            SigninState::Valid(_) => HttpResponse::Found().header("location", "/").finish(),
+            SigninState::SignedOutByThirdParty => HttpResponse::Found()
                 .header("location", "/login/google?expired=1")
-                .finish())
+                .finish(),
+            SigninState::NotSignedIn => {
+                // no login associated with this cookie
+                HttpResponse::Found()
+                    .header("location", "/login/google")
+                    .finish()
+            }
         }
-    } else {
-        // no login associated with this cookie
-        Ok(HttpResponse::Found()
-            .header("location", "/login/google")
-            .finish())
-    }
+    }))
 }
 
 fn login_google(req: &HttpRequest<State>) -> Result<HttpResponse> {
     let redirect_uri = format!("{}/login/google/callback", dotenv!("ROOT_HOST"));
-    req.session().remove("auth");
 
     // TODO: Think about using state to transfer login across browsers like events-nyc does
     // This essentially requires us to set the state directly into Redis, and may require us
@@ -101,6 +146,7 @@ fn login_google(req: &HttpRequest<State>) -> Result<HttpResponse> {
 }
 
 mod google_oauth;
+mod google_oauth_async;
 mod google_people_client;
 
 fn send_error<T: Debug + Display>(e: T) -> Error {
@@ -108,83 +154,92 @@ fn send_error<T: Debug + Display>(e: T) -> Error {
 }
 
 /// Manually revoke application tokens https://myaccount.google.com/permissions
-fn login_google_callback(request: &HttpRequest<State>) -> Result<HttpResponse> {
+fn login_google_callback(
+    request: &HttpRequest<State>,
+) -> Box<Future<Item = HttpResponse, Error = Error>> {
     if let Some(cause) = request.query().get("error") {
-        return Ok(HttpResponse::BadRequest()
-            .body(format!("Error during owner authorization: {:?}", cause)));
+        return Box::new(future::ok(
+            HttpResponse::BadRequest()
+                .body(format!("Error during owner authorization: {:?}", cause)),
+        ));
     }
 
     let code = match request.query().get("code") {
-        None => return Ok(HttpResponse::BadRequest().body("Missing code")),
+        None => return Box::new(future::ok(HttpResponse::BadRequest().body("Missing code"))),
         Some(code) => code.clone(),
     };
 
-    use google_oauth::ExchangeResult::*;
+    use google_oauth_async::ExchangeResult::*;
 
     let session_mgr: Addr<session_manager::SessionManager> = request.state().sessions.clone();
+    let req_session = request.session();
 
-    match google_oauth::exchange_code_for_token(&code) {
-        AccessAndRefreshTokens { access, refresh } => {
-            // TODO: Insert refresh tokens and create session
-            return Ok(HttpResponse::Found()
-                .header("Location", "/?login=refreshed")
-                .finish());
-        }
-        AccessTokenOnly(access) => {
-            // We need this to all be async!
-            // We need this to all be async!
-            // We need this to all be async!
-            // We need this to all be async!
-            // We need this to all be async!
-            // We need this to all be async!
-            // We need this to all be async!
-            // We need this to all be async!
-            // We need this to all be async!
-            // We need this to all be async!
-            // We need this to all be async!
-            // We need this to all be async!
-            // We need this to all be async!
-            /*
-            session_mgr.send(session_manager::CreateSession {
-                access_token: access,
-                refresh_token: None,
-                ip: request.connection_info().remote().unwrap_or("").to_owned(),
-                channel: String::from("web"),
-            }).map_err(send_error)
-            .and_then(|res: session_manager::CreateSessionResult| {
-                use session_manager::CreateSessionResult::*;
-                match res {
-                    Success(user_session) => {
-
-                    },
-                    UserNotFoundNeedsRefreshToken => {
-                        // TODO: Create session and link to refresh tokens
-                        return Ok(HttpResponse::Found()
-                            .header("Location", "/?login=accessonly")
-                            .finish());
-
+    let conn_info = request.connection_info().remote().unwrap_or("").to_owned();
+    info!(
+        "login_google_callback exchange_code_for_token: {}",
+        &conn_info
+    );
+    Box::new(
+        google_oauth_async::exchange_code_for_token(&code).and_then(move |result| {
+            info!("login_google_callback exchange_code_for_token result");
+            let create_session = match result {
+                AccessAndRefreshTokens { access, refresh } => {
+                    info!("Received Access & Refresh Tokens");
+                    session_manager::CreateSession {
+                        access_token: access,
+                        refresh_token: Some(refresh),
+                        ip: conn_info,
+                        channel: String::from("web"),
                     }
                 }
-            })
-            */
-        }
-        FetchError(error) => {
-            error!("Error fetching code: {}", error);
-        }
-        ParsingError(error) => {
-            error!("Error parsing exchange result: {}", error);
-        }
-        GoogleError(error) => {
-            info!("Error logging in user: {}", error);
-            return Ok(HttpResponse::Found()
-                .header("Location", "/?login=canceled")
-                .finish());
-        }
-    }
-
-    Ok(HttpResponse::Found()
-        .header("Location", "/?login=error")
-        .finish())
+                AccessTokenOnly(access) => {
+                    info!("Received only Access Token");
+                    session_manager::CreateSession {
+                        access_token: access,
+                        refresh_token: None,
+                        ip: conn_info,
+                        channel: String::from("web"),
+                    }
+                }
+            };
+            let is_new_account = create_session.refresh_token.is_some();
+            // We need this to all be async!
+            session_mgr
+                .send(create_session)
+                .map_err(send_error)
+                .and_then(move |res: Result<session_manager::CreateSessionResult>| {
+                    res.map(|create_result: session_manager::CreateSessionResult| {
+                        use session_manager::CreateSessionResult::*;
+                        match create_result {
+                            Success(user_session) => match req_session.set("auth", user_session) {
+                                Ok(_) => HttpResponse::Found()
+                                    .header(
+                                        "Location",
+                                        if is_new_account {
+                                            "/?login=signed-up"
+                                        } else {
+                                            "/?login=signed-in"
+                                        },
+                                    )
+                                    .finish(),
+                                Err(e) => {
+                                    warn!("Error setting user session {:?}", e);
+                                    HttpResponse::Found()
+                                        .header("Location", "/?login=session-failure")
+                                        .finish()
+                                }
+                            },
+                            UserNotFoundNeedsRefreshToken => {
+                                // TODO: Create session and link to refresh tokens
+                                HttpResponse::Found()
+                                    .header("Location", "/?login=accessonly+revoked")
+                                    .finish()
+                            }
+                        }
+                    })
+                })
+        }),
+    )
 }
 
 pub fn get_redirect_url(redirect_uri: &str, state: Option<&str>, domain: Option<&str>) -> String {
@@ -212,7 +267,7 @@ use actix_redis::RedisActor;
 mod db;
 use db::DbExecutor;
 mod session_manager;
-use session_manager::{SessionManager, IsValidSession, UpdateUserSession, ValidUserSession};
+use session_manager::{IsValidSession, SessionManager, UpdateUserSession, ValidUserSession};
 
 use actix::{Addr, SyncArbiter};
 
@@ -226,6 +281,8 @@ pub struct State {
 mod logging;
 
 fn main() {
+    // pulled in for any weird errors that may happen with openssl timeouts
+    openssl_probe::init_ssl_cert_env_vars();
     ::std::env::set_var("RUST_LOG", "actix_web=info,dewey=info");
     logging::init();
     let sys = actix::System::new("dewey");
@@ -285,6 +342,7 @@ fn main() {
     .unwrap()
     .start();
 
-    println!("Started http server: 127.0.0.1:8088");
+    info!("Started http server: 127.0.0.1:8088");
+    info!("                     {}", dotenv!("ROOT_HOST"));
     let _ = sys.run();
 }

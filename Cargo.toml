@@ -14,8 +14,9 @@ log = "0.4.6"
 rand = "^0.6"
 
 actix = "0.7"
-actix-web = "0.7"
+actix-web = { version = "0.7", features = ["default", "ssl"] }
 actix-redis = "0.5"
+openssl-probe = "0.1.2"
 redis-async = "^0.4"
 diesel = { version = "1.4.1", features = ["postgres", "r2d2", "chrono"] }
 diesel-derive-enum = { version = "0.4.4", features = ["postgres"] }

@@ -3,10 +3,10 @@ extern crate reqwest;
 use crate::google_oauth::GoogleAccessToken;
 
 use actix_web::client;
-use actix_web::client::ClientResponse;
 use actix_web::HttpMessage;
-use actix_web::{error, Error, FutureResponse};
+use actix_web::{error, FutureResponse};
 use futures::Future;
+use futures::future;
 
 #[derive(Deserialize, Debug)]
 struct GooglePeopleFieldMetadataSource {
@@ -97,6 +97,7 @@ pub fn who_am_i(access_token: &GoogleAccessToken) -> Result<IAm, String> {
 }
 
 pub fn who_am_i_async(access_token: &GoogleAccessToken) -> FutureResponse<IAm> {
+    info!("who am i async");
     // https://people.googleapis.com/v1/{resourceName=people/*}
     let person_fields = "names"; // "names,emailAddresses"
     let url = format!(
@@ -106,18 +107,28 @@ pub fn who_am_i_async(access_token: &GoogleAccessToken) -> FutureResponse<IAm> {
 
     Box::new(
         client::get(&url)
+            .header("User-Agent", "Actix-web")
+            .header("Accept-Encoding", "identity")
             .finish()
             .unwrap()
             .send()
+            .timeout(std::time::Duration::from_secs(10))
             .map_err(|e| {
                 warn!("Failed to send WhoAmI for GooglePeopleResource {:?}", e);
                 error::ErrorInternalServerError("Who am I send error")
             })
             .and_then(|resp: actix_web::client::ClientResponse| {
-                resp.json::<GooglePeopleResource>().map_err(|e| {
-                    warn!("Failed to parse GooglePeopleResource {:?}", e);
-                    error::ErrorInternalServerError("Who am I json parse error")
-                })
+                if resp.status().is_success() {
+                    future::Either::A(resp.json::<GooglePeopleResource>().map_err(|e| {
+                        warn!("Failed to parse GooglePeopleResource {:?}", e);
+                        error::ErrorInternalServerError("Who am I json parse error")
+                    }))
+                } else {
+                    future::Either::B(future::err(error::ErrorBadRequest(format!(
+                        "Who am I request error [{}], please try again",
+                        resp.status()
+                    ))))
+                }
             })
             .and_then(move |data: GooglePeopleResource| match data.resource_name {
                 Some(res_name) => Ok(IAm {

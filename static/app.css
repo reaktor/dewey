@@ -8,5 +8,14 @@ html, body {
 }
 
 .page {
-  margin: 2em;
+  margin: 2rem;
+}
+
+.flash {
+  padding: .5rem 1rem;
+}
+
+.flash-info {
+  background: #76c5e4;
+  border: .2rem solid #2992bb;
 }

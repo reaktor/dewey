@@ -7,11 +7,12 @@ use actix_redis::*;
 
 use super::db;
 use super::db::{DbExecutor, GetUserIdAndToken, UpsertGoogleUser, UserIdAndTokenVersion};
-use super::google_oauth;
 use super::google_oauth::GoogleAccessToken;
+use super::google_oauth_async;
 use super::google_people_client::{who_am_i_async, IAm};
 
 use futures;
+use futures::future;
 use futures::future::Either;
 use futures::future::Future;
 use futures::future::IntoFuture;
@@ -45,7 +46,7 @@ pub struct CreateSession {
 }
 
 /// Valid User Session comprises of the session's user_id and the user's version
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ValidUserSession {
     #[serde(rename = "i")]
     user_id: i64,
@@ -84,6 +85,7 @@ impl Handler<CreateSession> for SessionManager {
 
     fn handle(&mut self, msg: CreateSession, _: &mut Self::Context) -> Self::Result {
         let conn = self.pg.clone();
+        let redis = self.redis.clone();
         Box::new(
             // who is this chum trying to create a session?
             // does their account have credentials?
@@ -105,7 +107,8 @@ impl Handler<CreateSession> for SessionManager {
                             })
                             .map_err(send_error)
                             .and_then(|res| {
-                                res.map_err(|_| {
+                                res.map_err(|e| {
+                                    error!("Error upserting Google User & Token: {:?}", e);
                                     error::ErrorInternalServerError(
                                         "Error upserting Google User & Token",
                                     )
@@ -120,7 +123,8 @@ impl Handler<CreateSession> for SessionManager {
                             })
                             .map_err(send_error)
                             .and_then(|res| {
-                                res.map_err(|_| {
+                                res.map_err(|e| {
+                                    error!("Error getting User Id and Token: {:?}", e);
                                     error::ErrorInternalServerError(
                                         "Error getting User Id and Token",
                                     )
@@ -130,24 +134,38 @@ impl Handler<CreateSession> for SessionManager {
                                 match opt {
                                     None => {
                                         // we should revoke your tokens since we did not receive a refresh from you
-                                        google_oauth::revoke_token(&msg.access_token)
+                                        Either::A(google_oauth_async::revoke_token(&msg.access_token)
                                             .map(|_| {
                                                 CreateSessionResult::UserNotFoundNeedsRefreshToken
                                             })
-                                            .map_err(fetch_error)
+                                            .map_err(fetch_error))
                                     }
-                                    Some(r) => Ok(CreateSessionResult::from(r)),
+                                    Some(r) => Either::B(future::ok(CreateSessionResult::from(r))),
                                 }
                             }),
                         )
                     }
                 },
-            ),
+            ).and_then(move |create_session_res: CreateSessionResult| {
+                match create_session_res {
+                    CreateSessionResult::Success(valid_user_session) => {
+                        // Update redis table
+                        // insert into redis
+                        info!("REDIS inserting session into table = {:?}", valid_user_session);
+                        // redis.send(Command(resp_array!["SET", format!("ut{}", valid_user_session.user_id, valid_user_session.version]));
+                        future::ok(create_session_res)
+                    },
+                    CreateSessionResult::UserNotFoundNeedsRefreshToken => {
+                        // Remove from redis table
+                        future::ok(create_session_res)
+                    },
+                }
+            }),
         )
     }
 }
 
-pub struct IsValidSession(ValidUserSession);
+pub struct IsValidSession(pub ValidUserSession);
 
 impl Message for IsValidSession {
     type Result = Result<bool, Error>;
@@ -157,31 +175,35 @@ impl Handler<IsValidSession> for SessionManager {
     type Result = ResponseFuture<bool, Error>;
 
     fn handle(&mut self, msg: IsValidSession, _: &mut Self::Context) -> Self::Result {
+        // TODO: Insert expiry information & check if the google account has been signed out
         Box::new(
             self.redis
                 .send(Command(resp_array!["GET", format!("ut{}", msg.0.user_id)]))
                 .map_err(Error::from)
-                .and_then(move |res| match res {
-                    Ok(val) => match val {
-                        RespValue::Error(err) => Err(error::ErrorInternalServerError(err)),
-                        RespValue::Integer(version) => Ok(version == (msg.0.version as i64)),
-                        RespValue::SimpleString(s) => {
-                            if let Ok(val) = serde_json::from_str::<i32>(&s) {
-                                Ok(val == msg.0.version)
-                            } else {
-                                Ok(false)
+                .and_then(move |res| {
+                    info!("REDIS Checking if is valid session = {:?}", res);
+                    match res {
+                        Ok(val) => match val {
+                            RespValue::Error(err) => Err(error::ErrorInternalServerError(err)),
+                            RespValue::Integer(version) => Ok(version == (msg.0.version as i64)),
+                            RespValue::SimpleString(s) => {
+                                if let Ok(val) = serde_json::from_str::<i32>(&s) {
+                                    Ok(val == msg.0.version)
+                                } else {
+                                    Ok(false)
+                                }
                             }
-                        }
-                        RespValue::BulkString(s) => {
-                            if let Ok(val) = serde_json::from_slice::<i32>(&s) {
-                                Ok(val == msg.0.version)
-                            } else {
-                                Ok(false)
+                            RespValue::BulkString(s) => {
+                                if let Ok(val) = serde_json::from_slice::<i32>(&s) {
+                                    Ok(val == msg.0.version)
+                                } else {
+                                    Ok(false)
+                                }
                             }
-                        }
-                        _ => Ok(false),
-                    },
-                    Err(err) => Err(error::ErrorInternalServerError(err)),
+                            _ => Ok(false),
+                        },
+                        Err(err) => Err(error::ErrorInternalServerError(err)),
+                    }
                 }),
         )
     }
