@@ -14,12 +14,6 @@ extern crate dotenv_codegen;
 #[macro_use]
 extern crate log;
 
-extern crate openssl_probe;
-
-// use diesel::prelude::*;
-// use diesel::pg::PgConnection;
-// use std::env;
-
 use std::fmt::{Debug, Display};
 
 use actix::Actor;
@@ -281,8 +275,6 @@ pub struct State {
 mod logging;
 
 fn main() {
-    // pulled in for any weird errors that may happen with openssl timeouts
-    openssl_probe::init_ssl_cert_env_vars();
     ::std::env::set_var("RUST_LOG", "actix_web=info,dewey=info");
     logging::init();
     let sys = actix::System::new("dewey");

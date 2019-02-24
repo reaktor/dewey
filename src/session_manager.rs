@@ -148,16 +148,29 @@ impl Handler<CreateSession> for SessionManager {
                 },
             ).and_then(move |create_session_res: CreateSessionResult| {
                 match create_session_res {
-                    CreateSessionResult::Success(valid_user_session) => {
+                    CreateSessionResult::Success(ref valid_user_session) => {
                         // Update redis table
                         // insert into redis
                         info!("REDIS inserting session into table = {:?}", valid_user_session);
-                        // redis.send(Command(resp_array!["SET", format!("ut{}", valid_user_session.user_id, valid_user_session.version]));
-                        future::ok(create_session_res)
-                    },
+                        let (key, value) = get_auth_key_and_value(valid_user_session.user_id, valid_user_session.version);
+                        Either::A(
+                            redis.send(Command(resp_array!["SET", &key, value]))
+                                .map_err(Error::from)
+                                .and_then(move |res| {
+                                    info!("REDIS inserted session into table => {:?}", res);
+                                    match res {
+                                        Ok(val) => match val {
+                                            RespValue::Error(err) => Err(error::ErrorInternalServerError(err)),
+                                            _ => Ok(create_session_res),
+                                        },
+                                        Err(err) => Err(error::ErrorInternalServerError(err)),
+                                    }
+                                })
+                        )
+                    }
                     CreateSessionResult::UserNotFoundNeedsRefreshToken => {
                         // Remove from redis table
-                        future::ok(create_session_res)
+                        Either::B(future::ok(create_session_res))
                     },
                 }
             }),
@@ -176,29 +189,19 @@ impl Handler<IsValidSession> for SessionManager {
 
     fn handle(&mut self, msg: IsValidSession, _: &mut Self::Context) -> Self::Result {
         // TODO: Insert expiry information & check if the google account has been signed out
+        let (key, expected_value) = get_auth_key_and_value(msg.0.user_id, msg.0.version);
         Box::new(
             self.redis
-                .send(Command(resp_array!["GET", format!("ut{}", msg.0.user_id)]))
+                .send(Command(resp_array!["GET", key]))
                 .map_err(Error::from)
                 .and_then(move |res| {
                     info!("REDIS Checking if is valid session = {:?}", res);
                     match res {
                         Ok(val) => match val {
                             RespValue::Error(err) => Err(error::ErrorInternalServerError(err)),
-                            RespValue::Integer(version) => Ok(version == (msg.0.version as i64)),
-                            RespValue::SimpleString(s) => {
-                                if let Ok(val) = serde_json::from_str::<i32>(&s) {
-                                    Ok(val == msg.0.version)
-                                } else {
-                                    Ok(false)
-                                }
-                            }
+                            RespValue::SimpleString(s) => Ok(expected_value == s),
                             RespValue::BulkString(s) => {
-                                if let Ok(val) = serde_json::from_slice::<i32>(&s) {
-                                    Ok(val == msg.0.version)
-                                } else {
-                                    Ok(false)
-                                }
+                                Ok(expected_value.as_bytes() == s.as_slice())
                             }
                             _ => Ok(false),
                         },
@@ -207,6 +210,10 @@ impl Handler<IsValidSession> for SessionManager {
                 }),
         )
     }
+}
+
+fn get_auth_key_and_value(user_id: i64, version: i32) -> (String, String) {
+    (format!("ut#{}", user_id), format!("v#{}", version))
 }
 
 pub struct UpdateUserSession(ValidUserSession);
@@ -219,13 +226,10 @@ impl Handler<UpdateUserSession> for SessionManager {
     type Result = ResponseFuture<(), Error>;
 
     fn handle(&mut self, msg: UpdateUserSession, _: &mut Self::Context) -> Self::Result {
+        let (key, updated_value) = get_auth_key_and_value(msg.0.user_id, msg.0.version);
         Box::new(
             self.redis
-                .send(Command(resp_array![
-                    "SET",
-                    format!("ut{}", msg.0.user_id),
-                    RespValue::Integer(msg.0.version as i64)
-                ]))
+                .send(Command(resp_array!["SET", key, updated_value]))
                 .map_err(Error::from)
                 .and_then(move |res| match res {
                     Ok(val) => match val {
