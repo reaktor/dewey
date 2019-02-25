@@ -14,11 +14,9 @@ extern crate dotenv_codegen;
 #[macro_use]
 extern crate log;
 
-use std::fmt::{Debug, Display};
-
 use actix::Actor;
 use actix_redis::{RedisSessionBackend, RedisActor};
-use actix_web::middleware::session::{RequestSession, SessionStorage};
+use actix_web::middleware::session::{SessionStorage};
 use actix_web::{error, http, Error, FutureResponse, Result};
 use actix_web::{middleware, server, App, HttpRequest, HttpResponse};
 use futures::future;

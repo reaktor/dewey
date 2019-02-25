@@ -1,4 +1,5 @@
 // define your enum
+/// property_type enum
 #[derive(Debug, DbEnum)]
 pub enum PropertyType {
     Timestamptz,  // All variants must be fieldless
@@ -7,13 +8,21 @@ pub enum PropertyType {
     Choice,
 }
 
+/// user_kind enum
+#[derive(Debug, DbEnum)]
+pub enum UserKind {
+    Person,
+    Reserved,
+    Plugin,
+}
+
 table! {
     choice_values (object_id, property_id, value_id) {
         object_id -> Text,
         property_id -> Int8,
+        value_id -> Int8,
         created_by -> Int8,
         created_at -> Timestamptz,
-        value_id -> Int8,
     }
 }
 
@@ -92,11 +101,15 @@ table! {
 }
 
 table! {
+    use diesel::sql_types::{Int8, Nullable, Text};
+    use super::UserKindMapping;
     users (id) {
         id -> Int8,
         google_resource_id -> Nullable<Text>,
         full_name -> Text,
         display_name -> Text,
+        public_email -> Nullable<Text>,
+        kind -> UserKindMapping,
     }
 }
 

@@ -6,7 +6,7 @@ use std::io;
 use actix_redis::*;
 
 use super::db;
-use super::db::{DbExecutor, UserIdAndTokenVersion};
+use super::db::{DbExecutor};
 
 use super::oauth;
 use oauth::google_oauth;
@@ -81,6 +81,7 @@ impl Handler<CreateSession> for SessionManager {
                               given_name,
                               display_name,
                               email_address,
+                              .. // TODO: Use the user's photo_url
                           }| {
                         if let Some(refresh_token) = msg.refresh_token {
                             Either::A(
@@ -90,6 +91,7 @@ impl Handler<CreateSession> for SessionManager {
                                     display_name: given_name.clone(),
                                     access_token: msg.access_token,
                                     refresh_token: refresh_token,
+                                    email_address: email_address,
                                 })
                                 .map_err(send_error)
                                 .and_then(|res| {
@@ -99,23 +101,14 @@ impl Handler<CreateSession> for SessionManager {
                                             "Error upserting Google User & Token",
                                         )
                                     })
-                                    .map(
-                                        move |UserIdAndTokenVersion(i, v)| {
-                                            CreateSessionResult::Success(UserSession {
-                                                key: UserSessionKey {
-                                                    user_id: i,
-                                                    version: v,
-                                                },
-                                                display_name: display_name,
-                                                email_address: email_address,
-                                            })
-                                        },
-                                    )
+                                    .map(move |(person, key)| {
+                                        CreateSessionResult::Success(UserSession { key, person })
+                                    })
                                 }),
                             )
                         } else {
                             Either::B(
-                                conn.send(db::GetUserIdAndToken {
+                                conn.send(db::GetUserByResourceId {
                                     resource_id: resource_name,
                                 })
                                 .map_err(send_error)
@@ -137,16 +130,11 @@ impl Handler<CreateSession> for SessionManager {
                                             })
                                             .map_err(fetch_error))
                                         }
-                                        Some(UserIdAndTokenVersion(i, v)) => Either::B(future::ok(
-                                            CreateSessionResult::Success(UserSession {
-                                                key: UserSessionKey {
-                                                    user_id: i,
-                                                    version: v,
-                                                },
-                                                display_name: display_name,
-                                                email_address: email_address,
-                                            }),
-                                        )),
+                                        Some((person, key)) => {
+                                            Either::B(future::ok(CreateSessionResult::Success(
+                                                UserSession { key, person },
+                                            )))
+                                        }
                                     }
                                 }),
                             )
@@ -156,18 +144,18 @@ impl Handler<CreateSession> for SessionManager {
                 .and_then(move |create_session_res: CreateSessionResult| {
                     match create_session_res {
                         CreateSessionResult::Success(UserSession {
-                            key: ref valid_user_session,
+                            key: ref user_session_key,
                             ..
                         }) => {
                             // Update redis table
                             // insert into redis
                             info!(
                                 "REDIS inserting session into table = {:?}",
-                                valid_user_session
+                                user_session_key
                             );
                             let (key, value) = get_auth_key_and_value(
-                                valid_user_session.user_id,
-                                valid_user_session.version,
+                                user_session_key.user_id,
+                                user_session_key.version,
                             );
                             Either::A(
                                 redis

@@ -182,6 +182,9 @@ pub fn revoke_token(token: &GoogleAccessToken) -> FutureResponse<()> {
                 warn!("Error revoking token: {:?}", e);
                 error::ErrorInternalServerError("Error revoking token")
             })
-            .map(|_| ()),
+            .map(|_| {
+                info!("Successfully revoked user's tokens");
+                ()
+            }),
     )
 }

@@ -2,13 +2,16 @@ use chrono::{DateTime, TimeZone, Utc};
 
 use super::schema::users;
 use super::schema::user_tokens;
+use super::schema::UserKind;
 
-#[derive(Queryable)]
+#[derive(Debug, Queryable)]
 pub struct User {
     pub id: i64,
     pub google_resource_id: Option<String>,
     pub full_name: String,
     pub display_name: String,
+    pub public_email: Option<String>,
+    pub kind: UserKind,
 }
 
 #[derive(Insertable)]
@@ -17,6 +20,8 @@ pub struct NewUser<'a> {
     pub google_resource_id: Option<&'a str>,
     pub full_name: &'a str,
     pub display_name: &'a str,
+    pub public_email: Option<&'a str>,
+    pub kind: &'a UserKind,
 }
 
 #[derive(Queryable)]

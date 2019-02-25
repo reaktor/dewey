@@ -37,6 +37,14 @@ struct GooglePeopleName {
     display_name_last_first: Option<String>, // "Cole Lawrence"
 }
 
+// getting profile information
+// https://developers.google.com/people/api/rest/v1/people/get
+#[derive(Deserialize, Debug)]
+struct GooglePeoplePhoto {
+    metadata: GooglePeopleFieldMetadata, // "1/fFAGRNJru1FTz70BzhT3Zg",
+    url: Option<String>, // "https://lh3.googleusercontent.com/-XhSIc7llbfY/AAAAAAAAAAI/AAAAAAAAAHo/O6vIYycBkTw/s100/photo.jpg",
+}
+
 #[derive(Deserialize, Debug)]
 struct GooglePeopleEmailAddress {
     metadata: GooglePeopleFieldMetadata, // "1/fFAGRNJru1FTz70BzhT3Zg",
@@ -48,9 +56,9 @@ struct GooglePeopleResource {
     #[serde(rename = "resourceName")]
     resource_name: Option<String>,
     names: Option<Vec<GooglePeopleName>>,
-
-    // TODO: in future be able to identify attendees by emails assoc to users?
-    emailAddresses: Option<Vec<GooglePeopleEmailAddress>>,
+    #[serde(rename = "emailAddresses")]
+    email_addresses: Option<Vec<GooglePeopleEmailAddress>>,
+    photos: Option<Vec<GooglePeoplePhoto>>,
     error: Option<GooglePeopleError>,
 }
 
@@ -66,12 +74,13 @@ pub struct IAm {
     pub given_name: String,
     pub display_name: String,
     pub email_address: String,
+    pub photo_url: String,
 }
 
 pub fn who_am_i_async(access_token: &GoogleAccessToken) -> FutureResponse<IAm> {
     info!("who am i async");
     // https://people.googleapis.com/v1/{resourceName=people/*}
-    let person_fields = "names,emailAddresses"; // "names,emailAddresses"
+    let person_fields = "names,emailAddresses,photos";
     let url = format!(
         "https://people.googleapis.com/v1/people/me?personFields={}&access_token={}",
         person_fields, &access_token.access_token
@@ -107,11 +116,18 @@ pub fn who_am_i_async(access_token: &GoogleAccessToken) -> FutureResponse<IAm> {
 
                 let name0 = data.names.and_then(|mut names| names.pop());
                 let email0: String = data
-                    .emailAddresses
+                    .email_addresses
                     .and_then(|mut em| em.pop())
                     .map(|em: GooglePeopleEmailAddress| em.value)
                     .ok_or(error::ErrorInternalServerError(
                         "Email address needs to be present on account".to_string(),
+                    ))?;
+                let photo0: String = data
+                    .photos
+                    .and_then(|mut em| em.pop())
+                    .and_then(|em: GooglePeoplePhoto| em.url)
+                    .ok_or(error::ErrorInternalServerError(
+                        "Photo needs to be present on account".to_string(),
                     ))?;
 
                 match data.resource_name {
@@ -128,6 +144,7 @@ pub fn who_am_i_async(access_token: &GoogleAccessToken) -> FutureResponse<IAm> {
                             .to_owned(),
                         resource_name: res_name,
                         email_address: email0,
+                        photo_url: photo0,
                     }),
                     None => Err(match data.error {
                         Some(err) => {

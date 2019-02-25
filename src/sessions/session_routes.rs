@@ -187,7 +187,6 @@ fn login_google_callback(
                                 }
                             },
                             UserNotFoundNeedsRefreshToken => {
-                                // TODO: Create session and link to refresh tokens
                                 HttpResponse::Found()
                                     .header("Location", "/?login=accessonly+revoked")
                                     .finish()
