@@ -87,7 +87,10 @@ fn is_signed_in_guard(req: &HttpRequest<State>) -> impl Future<Item = SigninStat
             if let Some(auth) = auth_opt {
                 future::Either::A(is_valid(&auth, &session_mgr).and_then(
                     move |sign_in_valid: bool| {
-                        info!("Checking if session is auth: {:?}; {:?}", auth, sign_in_valid);
+                        info!(
+                            "Checking if session is auth: {:?}; {:?}",
+                            auth, sign_in_valid
+                        );
                         if sign_in_valid {
                             future::ok(SigninState::Valid(auth))
                         } else {
