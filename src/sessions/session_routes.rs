@@ -16,22 +16,24 @@ use actix_web::middleware::session::RequestSession;
 
 use super::session_manager;
 use super::session_manager::SessionManager;
-use super::ValidUserSession;
+use super::UserSession;
 
 // Main application state
 use super::super::State;
 
+const USER_SESSION_KEY: &'static str = "user_session";
+
 fn is_valid(
-    user_session: &ValidUserSession,
+    user_session: &UserSession,
     session_mgr: &Addr<SessionManager>,
 ) -> impl Future<Item = bool, Error = Error> {
     session_mgr
-        .send(session_manager::IsValidSession(user_session.clone()))
+        .send(session_manager::IsValidSession(user_session.key.clone()))
         .flatten()
 }
 
 pub enum SigninState {
-    Valid(ValidUserSession),
+    Valid(UserSession),
     SignedOutByThirdParty,
     NotSignedIn,
 }
@@ -43,7 +45,7 @@ pub fn is_signed_in_guard(
     let session_mgr: Addr<SessionManager> = req.state().sessions.clone();
 
     req_session
-        .get::<ValidUserSession>("auth")
+        .get::<UserSession>(USER_SESSION_KEY)
         .into_future()
         .and_then(move |auth_opt| {
             info!("User request's auth = {:?}", auth_opt);
@@ -57,7 +59,7 @@ pub fn is_signed_in_guard(
                         if sign_in_valid {
                             future::ok(SigninState::Valid(auth))
                         } else {
-                            req_session.remove("auth");
+                            req_session.remove(USER_SESSION_KEY);
                             future::ok(SigninState::SignedOutByThirdParty)
                         }
                     },
@@ -166,7 +168,7 @@ fn login_google_callback(
                     res.map(|create_result: session_manager::CreateSessionResult| {
                         use session_manager::CreateSessionResult::*;
                         match create_result {
-                            Success(user_session) => match req_session.set("auth", user_session) {
+                            Success(user_session) => match req_session.set(USER_SESSION_KEY, user_session) {
                                 Ok(_) => HttpResponse::Found()
                                     .header(
                                         "Location",
@@ -213,7 +215,7 @@ pub fn get_redirect_url(redirect_uri: &str, state: Option<&str>, domain: Option<
 }
 
 pub fn logout_endpoint(req: &HttpRequest<State>) -> Result<HttpResponse> {
-    req.session().remove("auth");
+    req.session().remove(USER_SESSION_KEY);
 
     Ok(HttpResponse::Found().header("location", "/").finish())
 }

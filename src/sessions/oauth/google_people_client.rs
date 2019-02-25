@@ -5,8 +5,8 @@ use super::google_oauth::GoogleAccessToken;
 use actix_web::client;
 use actix_web::HttpMessage;
 use actix_web::{error, FutureResponse};
-use futures::Future;
 use futures::future;
+use futures::Future;
 
 #[derive(Deserialize, Debug)]
 struct GooglePeopleFieldMetadataSource {
@@ -50,7 +50,7 @@ struct GooglePeopleResource {
     names: Option<Vec<GooglePeopleName>>,
 
     // TODO: in future be able to identify attendees by emails assoc to users?
-    // emailAddresses: Option<Vec<GooglePeopleEmailAddress>>,
+    emailAddresses: Option<Vec<GooglePeopleEmailAddress>>,
     error: Option<GooglePeopleError>,
 }
 
@@ -63,43 +63,15 @@ struct GooglePeopleError {
 #[derive(Debug)]
 pub struct IAm {
     pub resource_name: String,
-    pub name: Option<String>,
-}
-
-pub fn who_am_i(access_token: &GoogleAccessToken) -> Result<IAm, String> {
-    // https://people.googleapis.com/v1/{resourceName=people/*}
-    let person_fields = "names"; // "names,emailAddresses"
-    let url = format!(
-        "https://people.googleapis.com/v1/people/me?personFields={}&access_token={}",
-        person_fields, &access_token.access_token
-    );
-    let data: GooglePeopleResource = reqwest::get(&url)
-        .map_err(|e| e.to_string())?
-        .json::<GooglePeopleResource>()
-        .map_err(|e| e.to_string())?;
-    // let data: String = reqwest::get(&url).map_err(|e| e.to_string())?.text().map_err(|e| e.to_string())?;
-    // Err(data)
-
-    match data.resource_name {
-        Some(res_name) => Ok(IAm {
-            resource_name: res_name,
-            name: data.names.and_then(|mut names| {
-                names
-                    .pop()
-                    .and_then(|name0| name0.display_name.or(name0.given_name))
-            }),
-        }),
-        None => match data.error {
-            Some(err) => Err(format!("error: {:?}", err.message)),
-            None => Err("no resourceName or error present".to_string()),
-        },
-    }
+    pub given_name: String,
+    pub display_name: String,
+    pub email_address: String,
 }
 
 pub fn who_am_i_async(access_token: &GoogleAccessToken) -> FutureResponse<IAm> {
     info!("who am i async");
     // https://people.googleapis.com/v1/{resourceName=people/*}
-    let person_fields = "names"; // "names,emailAddresses"
+    let person_fields = "names,emailAddresses"; // "names,emailAddresses"
     let url = format!(
         "https://people.googleapis.com/v1/people/me?personFields={}&access_token={}",
         person_fields, &access_token.access_token
@@ -130,23 +102,42 @@ pub fn who_am_i_async(access_token: &GoogleAccessToken) -> FutureResponse<IAm> {
                     ))))
                 }
             })
-            .and_then(move |data: GooglePeopleResource| match data.resource_name {
-                Some(res_name) => Ok(IAm {
-                    resource_name: res_name,
-                    name: data.names.and_then(|mut names| {
-                        names
-                            .pop()
-                            .and_then(|name0| name0.display_name.or(name0.given_name))
+            .and_then(move |data: GooglePeopleResource| {
+                info!("Successfully retrieved IAm => {:?}", data);
+
+                let name0 = data.names.and_then(|mut names| names.pop());
+                let email0: String = data
+                    .emailAddresses
+                    .and_then(|mut em| em.pop())
+                    .map(|em: GooglePeopleEmailAddress| em.value)
+                    .ok_or(error::ErrorInternalServerError(
+                        "Email address needs to be present on account".to_string(),
+                    ))?;
+
+                match data.resource_name {
+                    Some(res_name) => Ok(IAm {
+                        given_name: name0
+                            .as_ref()
+                            .and_then(|n| n.given_name.as_ref().or(n.display_name.as_ref()))
+                            .unwrap_or(&email0)
+                            .to_owned(),
+                        display_name: name0
+                            .as_ref()
+                            .and_then(|n| n.display_name.as_ref().or(n.given_name.as_ref()))
+                            .unwrap_or(&email0)
+                            .to_owned(),
+                        resource_name: res_name,
+                        email_address: email0,
                     }),
-                }),
-                None => Err(match data.error {
-                    Some(err) => {
-                        error::ErrorInternalServerError(format!("error: {:?}", err.message))
-                    }
-                    None => error::ErrorInternalServerError(
-                        "no resourceName or error present".to_string(),
-                    ),
-                }),
+                    None => Err(match data.error {
+                        Some(err) => {
+                            error::ErrorInternalServerError(format!("error: {:?}", err.message))
+                        }
+                        None => error::ErrorInternalServerError(
+                            "no resourceName or error present".to_string(),
+                        ),
+                    }),
+                }
             }),
     )
 }

@@ -9,9 +9,9 @@ use super::db;
 use super::db::{DbExecutor, UserIdAndTokenVersion};
 
 use super::oauth;
-use oauth::GoogleAccessToken;
 use oauth::google_oauth;
 use oauth::google_people_client::{who_am_i_async, IAm};
+use oauth::GoogleAccessToken;
 
 use futures;
 use futures::future;
@@ -23,8 +23,7 @@ use ::actix::prelude::ResponseFuture;
 use actix_redis::{Command, RespValue};
 use actix_web::{error, Error, Result};
 
-use super::ValidUserSession;
-
+use super::{UserSession, UserSessionKey};
 
 /// How often should we recheck that the login is valid?
 const SESSION_EXPIRES_IN_MINUTES: i64 = 15;
@@ -64,17 +63,8 @@ fn fetch_error<T: Debug + Display>(e: T) -> Error {
 }
 
 pub enum CreateSessionResult {
-    Success(ValidUserSession),
+    Success(UserSession),
     UserNotFoundNeedsRefreshToken,
-}
-
-impl From<UserIdAndTokenVersion> for CreateSessionResult {
-    fn from(UserIdAndTokenVersion(i, v): UserIdAndTokenVersion) -> Self {
-        CreateSessionResult::Success(ValidUserSession {
-            user_id: i,
-            version: v,
-        })
-    }
 }
 
 impl Handler<CreateSession> for SessionManager {
@@ -84,98 +74,130 @@ impl Handler<CreateSession> for SessionManager {
         let conn = self.pg.clone();
         let redis = self.redis.clone();
         Box::new(
-            // who is this chum trying to create a session?
-            // does their account have credentials?
-            who_am_i_async(&msg.access_token).and_then(
-                move |IAm {
-                          resource_name,
-                          name,
-                      }| {
-                    if let Some(refresh_token) = msg.refresh_token {
-                        Either::A(
-                            conn.send(db::UpsertGoogleUser {
-                                resource_id: resource_name.clone(),
-                                full_name: name
-                                    .clone()
-                                    .unwrap_or(format!("No name: {}", resource_name.clone())),
-                                display_name: name.unwrap_or(String::from("No name")),
-                                access_token: msg.access_token,
-                                refresh_token: refresh_token,
-                            })
-                            .map_err(send_error)
-                            .and_then(|res| {
-                                res.map_err(|e| {
-                                    error!("Error upserting Google User & Token: {:?}", e);
-                                    error::ErrorInternalServerError(
-                                        "Error upserting Google User & Token",
-                                    )
+            who_am_i_async(&msg.access_token)
+                .and_then(
+                    move |IAm {
+                              resource_name,
+                              given_name,
+                              display_name,
+                              email_address,
+                          }| {
+                        if let Some(refresh_token) = msg.refresh_token {
+                            Either::A(
+                                conn.send(db::UpsertGoogleUser {
+                                    resource_id: resource_name.clone(),
+                                    full_name: display_name.clone(),
+                                    display_name: given_name.clone(),
+                                    access_token: msg.access_token,
+                                    refresh_token: refresh_token,
                                 })
-                                .map(CreateSessionResult::from)
-                            }),
-                        )
-                    } else {
-                        Either::B(
-                            conn.send(db::GetUserIdAndToken {
-                                resource_id: resource_name,
-                            })
-                            .map_err(send_error)
-                            .and_then(|res| {
-                                res.map_err(|e| {
-                                    error!("Error getting User Id and Token: {:?}", e);
-                                    error::ErrorInternalServerError(
-                                        "Error getting User Id and Token",
+                                .map_err(send_error)
+                                .and_then(|res| {
+                                    res.map_err(|e| {
+                                        error!("Error upserting Google User & Token: {:?}", e);
+                                        error::ErrorInternalServerError(
+                                            "Error upserting Google User & Token",
+                                        )
+                                    })
+                                    .map(
+                                        move |UserIdAndTokenVersion(i, v)| {
+                                            CreateSessionResult::Success(UserSession {
+                                                key: UserSessionKey {
+                                                    user_id: i,
+                                                    version: v,
+                                                },
+                                                display_name: display_name,
+                                                email_address: email_address,
+                                            })
+                                        },
                                     )
+                                }),
+                            )
+                        } else {
+                            Either::B(
+                                conn.send(db::GetUserIdAndToken {
+                                    resource_id: resource_name,
                                 })
-                            })
-                            .and_then(move |opt| {
-                                match opt {
-                                    None => {
-                                        // we should revoke your tokens since we did not receive a refresh from you
-                                        Either::A(google_oauth::revoke_token(&msg.access_token)
+                                .map_err(send_error)
+                                .and_then(|res| {
+                                    res.map_err(|e| {
+                                        error!("Error getting User Id and Token: {:?}", e);
+                                        error::ErrorInternalServerError(
+                                            "Error getting User Id and Token",
+                                        )
+                                    })
+                                })
+                                .and_then(move |opt| {
+                                    match opt {
+                                        None => {
+                                            // we should revoke your tokens since we did not receive a refresh from you
+                                            Either::A(google_oauth::revoke_token(&msg.access_token)
                                             .map(|_| {
                                                 CreateSessionResult::UserNotFoundNeedsRefreshToken
                                             })
                                             .map_err(fetch_error))
+                                        }
+                                        Some(UserIdAndTokenVersion(i, v)) => Either::B(future::ok(
+                                            CreateSessionResult::Success(UserSession {
+                                                key: UserSessionKey {
+                                                    user_id: i,
+                                                    version: v,
+                                                },
+                                                display_name: display_name,
+                                                email_address: email_address,
+                                            }),
+                                        )),
                                     }
-                                    Some(r) => Either::B(future::ok(CreateSessionResult::from(r))),
-                                }
-                            }),
-                        )
-                    }
-                },
-            ).and_then(move |create_session_res: CreateSessionResult| {
-                match create_session_res {
-                    CreateSessionResult::Success(ref valid_user_session) => {
-                        // Update redis table
-                        // insert into redis
-                        info!("REDIS inserting session into table = {:?}", valid_user_session);
-                        let (key, value) = get_auth_key_and_value(valid_user_session.user_id, valid_user_session.version);
-                        Either::A(
-                            redis.send(Command(resp_array!["SET", &key, value]))
-                                .map_err(Error::from)
-                                .and_then(move |res| {
-                                    info!("REDIS inserted session into table => {:?}", res);
-                                    match res {
-                                        Ok(val) => match val {
-                                            RespValue::Error(err) => Err(error::ErrorInternalServerError(err)),
-                                            _ => Ok(create_session_res),
-                                        },
-                                        Err(err) => Err(error::ErrorInternalServerError(err)),
-                                    }
-                                })
-                        )
-                    }
-                    CreateSessionResult::UserNotFoundNeedsRefreshToken => {
-                        // Remove from redis table
-                        Either::B(future::ok(create_session_res))
+                                }),
+                            )
+                        }
                     },
-                }
-            }),
+                )
+                .and_then(move |create_session_res: CreateSessionResult| {
+                    match create_session_res {
+                        CreateSessionResult::Success(UserSession {
+                            key: ref valid_user_session,
+                            ..
+                        }) => {
+                            // Update redis table
+                            // insert into redis
+                            info!(
+                                "REDIS inserting session into table = {:?}",
+                                valid_user_session
+                            );
+                            let (key, value) = get_auth_key_and_value(
+                                valid_user_session.user_id,
+                                valid_user_session.version,
+                            );
+                            Either::A(
+                                redis
+                                    .send(Command(resp_array!["SET", &key, value]))
+                                    .map_err(Error::from)
+                                    .and_then(move |res| {
+                                        info!("REDIS inserted session into table => {:?}", res);
+                                        match res {
+                                            Ok(val) => match val {
+                                                RespValue::Error(err) => {
+                                                    Err(error::ErrorInternalServerError(err))
+                                                }
+                                                _ => Ok(create_session_res),
+                                            },
+                                            Err(err) => Err(error::ErrorInternalServerError(err)),
+                                        }
+                                    }),
+                            )
+                        }
+                        CreateSessionResult::UserNotFoundNeedsRefreshToken => {
+                            // Remove from redis table
+                            Either::B(future::ok(create_session_res))
+                        }
+                    }
+                }),
         )
     }
 }
 
-pub struct IsValidSession(pub ValidUserSession);
+pub struct IsValidSession(pub UserSessionKey);
 
 impl Message for IsValidSession {
     type Result = Result<bool, Error>;
@@ -209,7 +231,7 @@ impl Handler<IsValidSession> for SessionManager {
     }
 }
 
-pub struct UpdateUserSession(ValidUserSession);
+pub struct UpdateUserSession(UserSessionKey);
 
 impl Message for UpdateUserSession {
     type Result = Result<(), Error>;
