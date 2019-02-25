@@ -15,6 +15,8 @@ mod models;
 mod schema;
 mod views;
 
+use super::sessions::UserSession;
+
 /// This is db executor actor. We are going to run 3 of them in parallel.
 pub struct DbExecutor(pub Pool<ConnectionManager<PgConnection>>);
 
@@ -33,19 +35,17 @@ pub struct UpsertGoogleUser {
     pub resource_id: String,
     pub full_name: String,
     pub display_name: String,
+    pub email_address: String, // TODO: add to database
     pub access_token: GoogleAccessToken,
     pub refresh_token: String,
 }
 
-/// The created user's information
-pub struct UserIdAndTokenVersion(pub i64, pub i32);
-
 impl Message for UpsertGoogleUser {
-    type Result = Result<UserIdAndTokenVersion>;
+    type Result = Result<UserSession>;
 }
 
 impl Handler<UpsertGoogleUser> for DbExecutor {
-    type Result = Result<UserIdAndTokenVersion>;
+    type Result = Result<UserSession>;
 
     fn handle(&mut self, msg: UpsertGoogleUser, _: &mut Self::Context) -> Self::Result {
         use views::{get_user_token_versions_by_resource, ViewUserIdTokenVersion};
