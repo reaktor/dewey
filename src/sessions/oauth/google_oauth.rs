@@ -4,7 +4,14 @@ use actix_web::{error, FutureResponse};
 use futures::future;
 use futures::Future;
 
-use super::google_oauth::GoogleAccessToken;
+use chrono::{DateTime, Utc, Duration};
+
+#[derive(Clone, Debug)]
+pub struct GoogleAccessToken {
+    pub access_token: String,
+    pub expires_at: DateTime<Utc>,
+}
+
 
 #[derive(Deserialize, Debug)]
 struct GoogleTokenAuthCodeJson {
@@ -17,8 +24,6 @@ struct GoogleTokenAuthCodeJson {
     pub error: Option<String>,
     pub error_description: Option<String>,
 }
-
-use chrono::{DateTime, Duration, Utc};
 
 #[derive(Debug)]
 pub enum ExchangeResult {

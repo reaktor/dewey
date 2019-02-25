@@ -9,7 +9,7 @@ use diesel::r2d2::Pool;
 use diesel::Connection;
 use diesel::PgConnection;
 
-use crate::google_oauth::GoogleAccessToken;
+use crate::sessions::GoogleAccessToken;
 
 mod models;
 mod schema;

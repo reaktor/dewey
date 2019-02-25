@@ -6,23 +6,25 @@ use std::io;
 use actix_redis::*;
 
 use super::db;
-use super::db::{DbExecutor, GetUserIdAndToken, UpsertGoogleUser, UserIdAndTokenVersion};
-use super::google_oauth::GoogleAccessToken;
-use super::google_oauth_async;
-use super::google_people_client::{who_am_i_async, IAm};
+use super::db::{DbExecutor, UserIdAndTokenVersion};
+
+use super::oauth;
+use oauth::GoogleAccessToken;
+use oauth::google_oauth;
+use oauth::google_people_client::{who_am_i_async, IAm};
 
 use futures;
 use futures::future;
-use futures::future::Either;
-use futures::future::Future;
-use futures::future::IntoFuture;
+use futures::future::{Either, Future};
 
 use std::fmt::{Debug, Display};
 
 use ::actix::prelude::ResponseFuture;
-use actix_redis::Command;
-use actix_redis::RespValue;
+use actix_redis::{Command, RespValue};
 use actix_web::{error, Error, Result};
+
+use super::ValidUserSession;
+
 
 /// How often should we recheck that the login is valid?
 const SESSION_EXPIRES_IN_MINUTES: i64 = 15;
@@ -45,17 +47,12 @@ pub struct CreateSession {
     pub channel: String,
 }
 
-/// Valid User Session comprises of the session's user_id and the user's version
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ValidUserSession {
-    #[serde(rename = "i")]
-    user_id: i64,
-    #[serde(rename = "v")]
-    version: i32,
-}
-
 impl Message for CreateSession {
     type Result = Result<CreateSessionResult>;
+}
+
+fn get_auth_key_and_value(user_id: i64, version: i32) -> (String, String) {
+    (format!("ut#{}", user_id), format!("v#{}", version))
 }
 
 fn send_error<T: Debug + Display>(e: T) -> Error {
@@ -134,7 +131,7 @@ impl Handler<CreateSession> for SessionManager {
                                 match opt {
                                     None => {
                                         // we should revoke your tokens since we did not receive a refresh from you
-                                        Either::A(google_oauth_async::revoke_token(&msg.access_token)
+                                        Either::A(google_oauth::revoke_token(&msg.access_token)
                                             .map(|_| {
                                                 CreateSessionResult::UserNotFoundNeedsRefreshToken
                                             })
@@ -210,10 +207,6 @@ impl Handler<IsValidSession> for SessionManager {
                 }),
         )
     }
-}
-
-fn get_auth_key_and_value(user_id: i64, version: i32) -> (String, String) {
-    (format!("ut#{}", user_id), format!("v#{}", version))
 }
 
 pub struct UpdateUserSession(ValidUserSession);

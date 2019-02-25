@@ -1,6 +1,6 @@
 extern crate reqwest;
 
-use crate::google_oauth::GoogleAccessToken;
+use super::google_oauth::GoogleAccessToken;
 
 use actix_web::client;
 use actix_web::HttpMessage;
