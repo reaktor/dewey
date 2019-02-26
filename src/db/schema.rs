@@ -1,20 +1,5 @@
-// define your enum
-/// property_type enum
-#[derive(Debug, DbEnum)]
-pub enum PropertyType {
-    Timestamptz,  // All variants must be fieldless
-    Text,
-    Relation,
-    Choice,
-}
-
-/// user_kind enum
-#[derive(Debug, DbEnum)]
-pub enum UserKind {
-    Person,
-    Reserved,
-    Plugin,
-}
+use crate::property::{PropertyType, PropertyTypeMapping};
+use crate::user::{UserKind, UserKindMapping};
 
 table! {
     choice_values (object_id, property_id, value_id) {
@@ -110,6 +95,7 @@ table! {
         display_name -> Text,
         public_email -> Nullable<Text>,
         kind -> UserKindMapping,
+        photo_url -> Nullable<Text>,
     }
 }
 

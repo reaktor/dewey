@@ -2,6 +2,8 @@
 #[macro_use]
 extern crate diesel;
 #[macro_use]
+extern crate diesel_derive_newtype;
+#[macro_use]
 extern crate diesel_derive_enum;
 #[macro_use]
 extern crate serde_derive;
@@ -23,6 +25,10 @@ use futures::future;
 use futures::{Future, IntoFuture};
 
 mod upload;
+
+pub mod property;
+pub mod object;
+pub mod user;
 
 mod db;
 use db::DbExecutor;

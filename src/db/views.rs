@@ -6,9 +6,11 @@ table! {
     }
 }
 
+use crate::user::UserId;
+
 #[derive(Queryable)]
 pub struct ViewUserIdTokenVersion {
-    pub user_id: i64,
+    pub user_id: UserId,
     pub google_resource_id: String,
     pub version: i32,
 }

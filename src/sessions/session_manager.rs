@@ -6,7 +6,7 @@ use std::io;
 use actix_redis::*;
 
 use super::db;
-use super::db::{DbExecutor};
+use super::db::DbExecutor;
 
 use super::oauth;
 use oauth::google_oauth;
@@ -23,7 +23,10 @@ use ::actix::prelude::ResponseFuture;
 use actix_redis::{Command, RespValue};
 use actix_web::{error, Error, Result};
 
-use super::{UserSession, UserSessionKey};
+use super::UserSession;
+use crate::db::UserSessionKey;
+
+use crate::user::UserId;
 
 /// How often should we recheck that the login is valid?
 const SESSION_EXPIRES_IN_MINUTES: i64 = 15;
@@ -50,7 +53,7 @@ impl Message for CreateSession {
     type Result = Result<CreateSessionResult>;
 }
 
-fn get_auth_key_and_value(user_id: i64, version: i32) -> (String, String) {
+fn get_auth_key_and_value(user_id: &UserId, version: i32) -> (String, String) {
     (format!("ut#{}", user_id), format!("v#{}", version))
 }
 
@@ -154,7 +157,7 @@ impl Handler<CreateSession> for SessionManager {
                                 user_session_key
                             );
                             let (key, value) = get_auth_key_and_value(
-                                user_session_key.user_id,
+                                &user_session_key.user_id,
                                 user_session_key.version,
                             );
                             Either::A(
@@ -196,7 +199,7 @@ impl Handler<IsValidSession> for SessionManager {
 
     fn handle(&mut self, msg: IsValidSession, _: &mut Self::Context) -> Self::Result {
         // TODO: Insert expiry information & check if the google account has been signed out
-        let (key, expected_value) = get_auth_key_and_value(msg.0.user_id, msg.0.version);
+        let (key, expected_value) = get_auth_key_and_value(&msg.0.user_id, msg.0.version);
         Box::new(
             self.redis
                 .send(Command(resp_array!["GET", key]))
@@ -229,7 +232,7 @@ impl Handler<UpdateUserSession> for SessionManager {
     type Result = ResponseFuture<(), Error>;
 
     fn handle(&mut self, msg: UpdateUserSession, _: &mut Self::Context) -> Self::Result {
-        let (key, updated_value) = get_auth_key_and_value(msg.0.user_id, msg.0.version);
+        let (key, updated_value) = get_auth_key_and_value(&msg.0.user_id, msg.0.version);
         Box::new(
             self.redis
                 .send(Command(resp_array!["SET", key, updated_value]))
