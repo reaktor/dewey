@@ -49,6 +49,7 @@ pub struct UpsertGoogleUser {
     pub email_address: String, // TODO: add to database
     pub access_token: GoogleAccessToken,
     pub refresh_token: String,
+    pub photo_url: String,
 }
 
 impl Message for UpsertGoogleUser {
@@ -92,6 +93,7 @@ impl Handler<UpsertGoogleUser> for DbExecutor {
                     display_name: &msg.display_name,
                     public_email: Some(&msg.email_address),
                     kind: &person_kind,
+                    photo_url: Some(&msg.photo_url),
                 };
 
                 let inserted_user: user::UserRow = insert_into(schema::users::table)

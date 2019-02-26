@@ -12,6 +12,7 @@ pub struct NewUser<'a> {
     pub display_name: &'a str,
     pub public_email: Option<&'a str>,
     pub kind: &'a user::UserKind,
+    pub photo_url: Option<&'a str>,
 }
 
 #[derive(Queryable)]

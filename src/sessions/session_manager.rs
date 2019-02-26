@@ -84,7 +84,7 @@ impl Handler<CreateSession> for SessionManager {
                               given_name,
                               display_name,
                               email_address,
-                              .. // TODO: Use the user's photo_url
+                              photo_url
                           }| {
                         if let Some(refresh_token) = msg.refresh_token {
                             Either::A(
@@ -95,6 +95,7 @@ impl Handler<CreateSession> for SessionManager {
                                     access_token: msg.access_token,
                                     refresh_token: refresh_token,
                                     email_address: email_address,
+                                    photo_url: photo_url,
                                 })
                                 .map_err(send_error)
                                 .and_then(|res| {

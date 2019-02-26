@@ -38,6 +38,7 @@ use sessions::session_manager::{SessionManager};
 use sessions::session_routes;
 use sessions::session_routes::{is_signed_in_guard, SigninState};
 
+use user::User;
 
 use actix::{Addr, SyncArbiter};
 
@@ -59,7 +60,11 @@ fn index(req: &HttpRequest<State>) -> Box<Future<Item = HttpResponse, Error = Er
 </html>"#,
                     match signin_state {
                         SigninState::Valid(auth) => format!(
-                            "You're logged in<br>{}<br><a href=\"/logout\">Log out</a>",
+                            r#"{}{}, you're logged in<br><pre>{}</pre><br><a href=\"/logout\">Log out</a>"#,
+                            auth.person.display_name(),
+                            auth.person.photo_url().map(|url| {
+                                format!(r#" <img src="{}" style="height: 1em; width: 1em; border-radius: .5em;"/>"#, url)
+                            }).unwrap_or("".into()),
                             serde_json::to_string(&auth).unwrap()
                         ),
                         SigninState::SignedOutByThirdParty => {
