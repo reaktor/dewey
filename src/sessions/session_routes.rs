@@ -11,11 +11,11 @@ use futures::future::{Either, Future, IntoFuture};
 
 use std::fmt::{Debug, Display};
 
-use actix_web::{error, Error, Result};
 use actix_web::middleware::session::RequestSession;
+use actix_web::{error, Error, Result};
 
-use super::session_manager;
-use super::session_manager::SessionManager;
+use super::flash::SessionFlash;
+use super::session_manager::{self, SessionManager};
 use super::UserSession;
 
 // Main application state
@@ -50,23 +50,25 @@ pub fn is_signed_in_guard(
         .and_then(move |auth_opt| {
             info!("User request's auth = {:?}", auth_opt);
             if let Some(auth) = auth_opt {
-                future::Either::A(is_valid(&auth, &session_mgr).and_then(
+                Either::A(is_valid(&auth, &session_mgr).and_then(
                     move |sign_in_valid: bool| {
                         info!(
                             "Checking if session is auth: {:?}; {:?}",
                             auth, sign_in_valid
                         );
                         if sign_in_valid {
-                            future::ok(SigninState::Valid(auth))
+                            Ok(SigninState::Valid(auth))
                         } else {
+                            req_session
+                                .flash("You've been signed out by another location.")?;
                             req_session.remove(USER_SESSION_KEY);
-                            future::ok(SigninState::SignedOutByThirdParty)
+                            Ok(SigninState::SignedOutByThirdParty)
                         }
                     },
                 ))
             } else {
                 // no login associated with this cookie
-                future::Either::B(future::ok(SigninState::NotSignedIn))
+                Either::B(future::ok(SigninState::NotSignedIn))
             }
         })
 }
@@ -74,23 +76,28 @@ pub fn is_signed_in_guard(
 fn login(req: &HttpRequest<State>) -> Box<Future<Item = HttpResponse, Error = Error>> {
     let req_session = req.session();
 
-    Box::new(is_signed_in_guard(req).map(|signin_state: SigninState| {
-        match signin_state {
-            SigninState::Valid(_) => HttpResponse::Found().header("location", "/").finish(),
-            SigninState::SignedOutByThirdParty => HttpResponse::Found()
-                .header("location", "/login/google?expired=1")
-                .finish(),
-            SigninState::NotSignedIn => {
-                // no login associated with this cookie
-                HttpResponse::Found()
-                    .header("location", "/login/google")
-                    .finish()
+    Box::new(
+        is_signed_in_guard(req).and_then(move |signin_state: SigninState| {
+            match signin_state {
+                SigninState::Valid(_) => {
+                    req_session.flash("You're signed in!")?;
+                    Ok(HttpResponse::Found().header("location", "/").finish())
+                }
+                SigninState::SignedOutByThirdParty => Ok(HttpResponse::Found()
+                    .header("location", "/login/google?expired=1")
+                    .finish()),
+                SigninState::NotSignedIn => {
+                    // no login associated with this cookie
+                    Ok(HttpResponse::Found()
+                        .header("location", "/login/google")
+                        .finish())
+                }
             }
-        }
-    }))
+        }),
+    )
 }
 
-fn login_google(req: &HttpRequest<State>) -> Result<HttpResponse> {
+fn login_google(_req: &HttpRequest<State>) -> Result<HttpResponse> {
     let redirect_uri = format!("{}/login/google/callback", dotenv!("ROOT_HOST"));
 
     // TODO: Think about using state to transfer login across browsers like events-nyc does
@@ -165,31 +172,40 @@ fn login_google_callback(
                 .send(create_session)
                 .map_err(send_error)
                 .and_then(move |res: Result<session_manager::CreateSessionResult>| {
-                    res.map(|create_result: session_manager::CreateSessionResult| {
+                    res.and_then(|create_result: session_manager::CreateSessionResult| {
                         use session_manager::CreateSessionResult::*;
                         match create_result {
-                            Success(user_session) => match req_session.set(USER_SESSION_KEY, user_session) {
-                                Ok(_) => HttpResponse::Found()
-                                    .header(
-                                        "Location",
-                                        if is_new_account {
-                                            "/?login=signed-up"
-                                        } else {
-                                            "/?login=signed-in"
-                                        },
-                                    )
-                                    .finish(),
-                                Err(e) => {
-                                    warn!("Error setting user session {:?}", e);
-                                    HttpResponse::Found()
-                                        .header("Location", "/?login=session-failure")
-                                        .finish()
+                            Success(user_session) => {
+                                match req_session.set(USER_SESSION_KEY, user_session) {
+                                    Ok(_) => Ok(HttpResponse::Found()
+                                        .header(
+                                            "Location",
+                                            if is_new_account {
+                                                req_session.flash("You've signed up!")?;
+                                                "/?login=signed-up"
+                                            } else {
+                                                req_session.flash("You've signed in!")?;
+                                                "/?login=signed-in"
+                                            },
+                                        )
+                                        .finish()),
+                                    Err(e) => {
+                                        req_session.flash(
+                                            "An unexpected error occurred while signing you in.",
+                                        )?;
+                                        warn!("Error setting user session {:?}", e);
+                                        Ok(HttpResponse::Found()
+                                            .header("Location", "/?login=session-failure")
+                                            .finish())
+                                    }
                                 }
-                            },
+                            }
                             UserNotFoundNeedsRefreshToken => {
-                                HttpResponse::Found()
+                                req_session
+                                    .flash("You may have been signed out by another location. Please try signing in again.")?;
+                                Ok(HttpResponse::Found()
                                     .header("Location", "/?login=accessonly+revoked")
-                                    .finish()
+                                    .finish())
                             }
                         }
                     })
@@ -214,7 +230,9 @@ pub fn get_redirect_url(redirect_uri: &str, state: Option<&str>, domain: Option<
 }
 
 pub fn logout_endpoint(req: &HttpRequest<State>) -> Result<HttpResponse> {
-    req.session().remove(USER_SESSION_KEY);
+    let req_session = req.session();
+    req_session.remove(USER_SESSION_KEY);
+    req_session.flash("You have signed out.")?;
 
     Ok(HttpResponse::Found().header("location", "/").finish())
 }

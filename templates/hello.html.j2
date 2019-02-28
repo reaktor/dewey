@@ -1,0 +1,16 @@
+{% extends "page.html.j2" %}
+
+{% block head %}
+{% endblock %}
+
+{% block body %}
+<h1>Collect</h1>
+{% let user_opt = page.user_opt %}
+{% match user_opt %}
+    {% when Some with (user) %}
+        Hello, {{ user.display_name }}
+        <br/>
+    {% when None %}
+        <a href="/login">Login</a>
+{% endmatch %}
+{% endblock %}

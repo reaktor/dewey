@@ -15,68 +15,54 @@ extern crate dotenv;
 extern crate dotenv_codegen;
 #[macro_use]
 extern crate log;
+extern crate askama; // for the Template trait and custom derive macro
+use askama::Template; // bring trait in scope
 
 use actix::Actor;
-use actix_redis::{RedisSessionBackend, RedisActor};
-use actix_web::middleware::session::{SessionStorage};
-use actix_web::{error, http, Error, FutureResponse, Result};
+use actix_redis::{RedisActor, RedisSessionBackend};
+use actix_web::middleware::session::{SessionStorage, RequestSession};
+use actix_web::{http, Error};
 use actix_web::{middleware, server, App, HttpRequest, HttpResponse};
-use futures::future;
-use futures::{Future, IntoFuture};
+use futures::Future;
 
 mod upload;
 
-pub mod property;
 pub mod object;
+pub mod property;
 pub mod user;
 
 mod db;
 use db::DbExecutor;
 mod sessions;
-use sessions::session_manager;
-use sessions::session_manager::{SessionManager};
-use sessions::session_routes;
-use sessions::session_routes::{is_signed_in_guard, SigninState};
-
-use user::User;
+use sessions::session_manager::SessionManager;
+use sessions::session_routes::{self, is_signed_in_guard, SigninState};
+use sessions::flash::SessionFlash; // enable inserting and applying flash messages to the page
 
 use actix::{Addr, SyncArbiter};
 
+mod templates;
+
 fn index(req: &HttpRequest<State>) -> Box<Future<Item = HttpResponse, Error = Error>> {
+    use templates::*;
+    let req_session = req.session();
     Box::new(
         is_signed_in_guard(req).and_then(move |signin_state: SigninState| {
+            let mut page = Page::default();
+            req_session.apply_flash(&mut page)?;
+
+            match signin_state {
+                SigninState::Valid(ref auth) => page.person(&auth.person),
+                SigninState::SignedOutByThirdParty => {
+                    page.info("You've been signed out by a third party.")
+                }
+                SigninState::NotSignedIn => {}
+            };
             Ok(HttpResponse::Ok()
                 .header(http::header::CONTENT_TYPE, "text/html")
-                .body(format!(
-                    r#"<html>
-<head>
-    <title>Collect</title>
-    <link rel="stylesheet" href="/static/app.css?3"/>
-</head>
-<body class="page">
-    <h1>Collect</h1>
-    {}
-</body>
-</html>"#,
-                    match signin_state {
-                        SigninState::Valid(auth) => format!(
-                            r#"{}{}, you're logged in<br><pre>{}</pre><br><a href=\"/logout\">Log out</a>"#,
-                            auth.person.display_name(),
-                            auth.person.photo_url().map(|url| {
-                                format!(r#" <img src="{}" style="height: 1em; width: 1em; border-radius: .5em;"/>"#, url)
-                            }).unwrap_or("".into()),
-                            serde_json::to_string(&auth).unwrap()
-                        ),
-                        SigninState::SignedOutByThirdParty => {
-                            "<div class=\"flash flash-info\">Your account has been signed out by another location</div><br><a href=\"/login\">Log in</a>".to_string()
-                        }
-                        SigninState::NotSignedIn => "<a href=\"/login\">Log in</a>".to_string(),
-                    }
-                )))
+                .body(templates::HelloTemplate { page }.render().unwrap()))
         }),
     )
 }
-
 
 /// State with DbExecutor address
 pub struct State {

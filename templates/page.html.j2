@@ -1,0 +1,35 @@
+<html>
+<head>
+    <title>{% block title %}Collect{% endblock %}</title>
+    <link rel="stylesheet" href="/static/app.css?4"/>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="topbar inverse" style="padding: .5em; text-align: right;">
+{% match page.user_opt %}
+    {% when Some with (user) %}
+        {% match user.photo_url %}
+            {% when Some with (user_photo_url) %}
+            <img src="{{ user_photo_url }}" style="height: 1em; width: 1em; border-radius: .5em;" />
+            {% when None -%}{%- endmatch %}
+        {{ user.display_name }}
+        &nbsp;
+        <span style="margin-left: 2em">
+            <a href="/logout">Logout</a>
+        </span>
+    {% when None %}
+        <a href="/login">Login</a>
+{% endmatch %}
+    </div>
+    <div class="page">
+    {% for flash in page.flashes %}
+        {% if flash.level >= 2 %}
+            <div class="flash flash-info">{{flash.message}}</div>
+        {% else  %}
+            <div class="flash flash-warn">{{flash.message}}</div>
+        {% endif  %}
+    {% endfor %}
+    {% block body %}{% endblock %}
+    </div>
+</body>
+</html>

@@ -19,3 +19,10 @@ html, body {
   background: #76c5e4;
   border: .2rem solid #2992bb;
 }
+
+.inverse {
+  background: #2E2B3A;
+  color: #E0DEE6;
+}
+.inverse a { color: #a38ee3; }
+.inverse a:visited { color: #e38ee3; }
