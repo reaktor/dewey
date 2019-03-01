@@ -27,6 +27,7 @@ use actix_redis::RedisActor;
 
 mod db;
 use db::DbExecutor;
+use clap::{App, Arg, SubCommand};
 
 mod sessions;
 use sessions::session_manager::SessionManager;
@@ -45,5 +46,23 @@ pub struct State {
 mod logging;
 
 fn main() {
-    app::start();
+    let args = App::new("Dewey Collect")
+        .version(dotenv!("CARGO_PKG_VERSION"))
+        .author(dotenv!("CARGO_PKG_AUTHORS"))
+        .about("A component of the Dewey project.  Collects and categorization of archive files")
+        .arg(Arg::with_name("debug")
+             .short("d")
+             .help("Verbose output for troubleshooting"))
+        .subcommand(SubCommand::with_name("start")
+                    .about("Starts the Dewey Collect Web Application Server")
+                    .arg(Arg::with_name("port")
+                         .short("p")
+                         .value_name("PORT")
+                         .help("Specify the port to start on [default: 8088]")))
+        .get_matches();
+    
+    match args.subcommand_name() {
+        Some("start") => app::start(),
+        _ => {}
+    }
 }
