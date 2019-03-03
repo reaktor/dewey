@@ -13,6 +13,13 @@ futures = "0.1"
 log = "0.4.6"
 rand = "^0.6"
 
+# Used by S4
+derive-error = "0.0.4"
+fallible-iterator = "0.1.6"
+rusoto_core = "0.36.0"
+rusoto_credential = "0.15.0"
+rusoto_s3 = "0.36.0"
+
 actix = "0.7"
 actix-web = { version = "0.7", features = ["default", "ssl"] }
 actix-redis = "0.5"
@@ -20,6 +27,7 @@ askama = "0.8"
 diesel = { version = "1.4.1", features = ["postgres", "r2d2", "chrono"] }
 diesel-derive-enum = { version = "0.4.4", features = ["postgres"] }
 diesel-derive-newtype = "0.1.2"
+listenfd = "0.3"
 redis-async = "^0.4"
 reqwest = "0.9.10"
 serde = "^1.0"

@@ -5,9 +5,45 @@ use actix_web::{
     dev, error, multipart, Error, FutureResponse, HttpMessage, HttpRequest, HttpResponse,
 };
 
+use super::State;
 use std::fs;
 use std::io::Write;
-use super::State;
+
+mod s4;
+
+pub mod object_store {
+    use super::s4::{self, S4};
+    use ::actix::prelude::*;
+    use futures::stream::Stream;
+    use rusoto_core::request::{HttpClient, TlsError};
+    use rusoto_core::{self, Region};
+    use rusoto_credential::StaticProvider;
+    use rusoto_s3::{self, S3Client};
+
+    /// This is object store actor
+    pub struct ObjectStore {
+        s3: S3Client,
+    }
+
+    impl Actor for ObjectStore {
+        type Context = Context<Self>;
+    }
+
+    impl ObjectStore {
+        pub fn new_with_s3_credentials(
+            access_key: &str,
+            secret_key: &str,
+        ) -> Result<ObjectStore, TlsError> {
+            Ok(ObjectStore {
+                s3: s4::new_s3client_with_credentials(
+                    Region::UsEast1,
+                    access_key.to_string(),
+                    secret_key.to_string(),
+                )?,
+            })
+        }
+    }
+}
 
 /// from payload, save file
 pub fn save_file(field: multipart::Field<dev::Payload>) -> Box<Future<Item = i64, Error = Error>> {
@@ -65,16 +101,31 @@ pub fn handle_multipart_item(
 }
 
 pub fn upload(req: HttpRequest<State>) -> FutureResponse<HttpResponse> {
+    use actix::Addr;
+    use actix_web::error;
+    use object_store::ObjectStore;
+    let store: Addr<ObjectStore> = req.state().store.clone();
+
+    use crate::sessions::UserSession;
+    use crate::{is_signed_in_guard, SigninState};
+
     Box::new(
-        req.multipart()
-            .map_err(error::ErrorInternalServerError)
-            .map(handle_multipart_item)
-            .flatten()
-            .collect()
-            .map(|sizes| HttpResponse::Ok().json(sizes))
-            .map_err(|e| {
-                println!("failed: {}", e);
-                e
+        is_signed_in_guard(&req)
+            .and_then(|state| match state {
+                SigninState::Valid(session) => Ok(session),
+                _ => Err(error::ErrorForbidden("Must log in to upload")),
+            })
+            .and_then(move |session: UserSession| {
+                req.multipart()
+                    .map_err(error::ErrorInternalServerError)
+                    .map(handle_multipart_item)
+                    .flatten()
+                    .collect()
+                    .map(|sizes| HttpResponse::Ok().json(sizes))
+                    .map_err(|e| {
+                        println!("failed: {}", e);
+                        e
+                    })
             }),
     )
 }

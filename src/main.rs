@@ -6,6 +6,8 @@ extern crate diesel_derive_newtype;
 #[macro_use]
 extern crate diesel_derive_enum;
 #[macro_use]
+extern crate derive_error;
+#[macro_use]
 extern crate serde_derive;
 #[macro_use]
 extern crate redis_async;
@@ -20,10 +22,12 @@ use askama::Template; // bring trait in scope
 
 use actix::Actor;
 use actix_redis::{RedisActor, RedisSessionBackend};
-use actix_web::middleware::session::{SessionStorage, RequestSession};
+use actix_web::middleware::session::{RequestSession, SessionStorage};
 use actix_web::{http, Error};
 use actix_web::{middleware, server, App, HttpRequest, HttpResponse};
 use futures::Future;
+
+extern crate listenfd; // for systemfd dev-watch.sh
 
 mod upload;
 
@@ -34,9 +38,11 @@ pub mod user;
 mod db;
 use db::DbExecutor;
 mod sessions;
+use sessions::flash::SessionFlash;
 use sessions::session_manager::SessionManager;
-use sessions::session_routes::{self, is_signed_in_guard, SigninState};
-use sessions::flash::SessionFlash; // enable inserting and applying flash messages to the page
+use sessions::session_routes::{self, is_signed_in_guard, SigninState}; // enable inserting and applying flash messages to the page
+
+use upload::object_store::ObjectStore;
 
 use actix::{Addr, SyncArbiter};
 
@@ -69,6 +75,7 @@ pub struct State {
     db: Addr<DbExecutor>,
     mem: Addr<RedisActor>,
     sessions: Addr<SessionManager>,
+    store: Addr<ObjectStore>,
 }
 
 mod logging;
@@ -93,7 +100,16 @@ fn main() {
 
     let session_addr = session_actor.start();
 
-    server::new(move || {
+    let store_actor = ObjectStore::new_with_s3_credentials(
+        dotenv!("S3_ACCESS_KEY_ID"),
+        dotenv!("S3_SECRET_ACCESS_KEY"),
+    ).expect("No TLS errors starting store_actor");
+
+    let store_addr = store_actor.start();
+
+    use listenfd::ListenFd;
+    let mut listenfd = ListenFd::from_env();
+    let mut server = server::new(move || {
         vec![
             App::new()
                 .prefix("/static")
@@ -108,6 +124,7 @@ fn main() {
                 db: db_addr.clone(),
                 mem: redis_addr.clone(),
                 sessions: session_addr.clone(),
+                store: store_addr.clone(),
             })
             .middleware(middleware::Logger::new(r#"%T "%r" %s %b "%{Referer}i""#))
             .middleware(SessionStorage::new(
@@ -123,12 +140,17 @@ fn main() {
             .resource("/", |r| r.f(index))
             .boxed(),
         ]
-    })
-    .bind("127.0.0.1:8088")
-    .unwrap()
-    .start();
+    });
+
+    // Autoreload with systemfd & listenfd
+    // from: https://actix.rs/docs/autoreload/
+    server = if let Some(l) = listenfd.take_tcp_listener(0).unwrap() {
+        server.listen(l)
+    } else {
+        server.bind("127.0.0.1:8088").unwrap()
+    };
 
     info!("Started http server: 127.0.0.1:8088");
     info!("                     {}", dotenv!("ROOT_HOST"));
-    let _ = sys.run();
+    server.run();
 }
