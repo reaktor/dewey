@@ -1,7 +1,7 @@
 use actix_web::middleware::session::{SessionStorage, RequestSession, Session};
 use actix_web::Result;
 
-use crate::templates::Page;
+use crate::app::templates::Page;
 
 /// Add a flash message to the current session
 pub trait SessionFlash {
