@@ -138,7 +138,7 @@ fn upload_example(req: &HttpRequest<State>) -> Box<Future<Item = HttpResponse, E
             };
 
             if page.user_opt.is_none() {
-                return Ok(HttpResponse::Found().header("location", "/html").finish());
+                return Ok(HttpResponse::Found().header("location", "/").finish());
             }
 
             Ok(HttpResponse::Ok()
