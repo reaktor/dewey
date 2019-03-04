@@ -19,7 +19,7 @@ use sessions::flash::SessionFlash; // enable inserting and applying flash messag
 pub mod templates;
 mod upload;
 
-use crate::store::object_store::ObjectStore;
+use crate::store::ObjectStore;
 
 pub fn start() {
     ::std::env::set_var("RUST_LOG", "actix_web=info,dewey=info");

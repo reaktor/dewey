@@ -20,7 +20,6 @@ extern crate log;
 extern crate askama; // for the Template trait and custom derive macro
 
 pub mod object;
-pub mod store;
 pub mod property;
 pub mod user;
 mod app;
@@ -37,8 +36,8 @@ use sessions::flash::SessionFlash;
 use sessions::session_manager::SessionManager;
 use sessions::session_routes::{self, is_signed_in_guard, SigninState}; // enable inserting and applying flash messages to the page
 
-pub use store::object_store;
-use self::object_store::ObjectStore;
+pub use object::store;
+use self::store::ObjectStore;
 
 /// State with DbExecutor address
 pub struct State {
