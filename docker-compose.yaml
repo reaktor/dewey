@@ -9,8 +9,8 @@ services:
   ports:
    - "9000:9000"
   environment:
-   MINIO_ACCESS_KEY: colelawrence
-   MINIO_SECRET_KEY: supercookiespassword
+   MINIO_ACCESS_KEY: minioaccesskey
+   MINIO_SECRET_KEY: miniosecretaccesskey
   command: server /export
  postgres1:
   image: postgres:11.2-alpine
