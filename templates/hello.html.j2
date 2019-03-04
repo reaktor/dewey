@@ -10,6 +10,7 @@
     {% when Some with (user) %}
         Hello, {{ user.display_name }}
         <br/>
+        <a href="/example">Upload</a>
     {% when None %}
         <a href="/login">Login</a>
 {% endmatch %}

@@ -70,6 +70,33 @@ fn index(req: &HttpRequest<State>) -> Box<Future<Item = HttpResponse, Error = Er
     )
 }
 
+fn upload_example(req: &HttpRequest<State>) -> Box<Future<Item = HttpResponse, Error = Error>> {
+    use templates::*;
+    let req_session = req.session();
+    Box::new(
+        is_signed_in_guard(req).and_then(move |signin_state: SigninState| {
+            let mut page = Page::default();
+            req_session.apply_flash(&mut page)?;
+
+            match signin_state {
+                SigninState::Valid(ref auth) => page.person(&auth.person),
+                SigninState::SignedOutByThirdParty => {
+                    page.info("You've been signed out by a third party.")
+                }
+                SigninState::NotSignedIn => {}
+            };
+
+            if page.user_opt.is_none() {
+                return Ok(HttpResponse::Found().header("location", "/html").finish());
+            }
+
+            Ok(HttpResponse::Ok()
+                .header(http::header::CONTENT_TYPE, "text/html")
+                .body(templates::UploadTemplate { page }.render().unwrap()))
+        }),
+    )
+}
+
 /// State with DbExecutor address
 pub struct State {
     db: Addr<DbExecutor>,
@@ -103,7 +130,8 @@ fn main() {
     let store_actor = ObjectStore::new_with_s3_credentials(
         dotenv!("S3_ACCESS_KEY_ID"),
         dotenv!("S3_SECRET_ACCESS_KEY"),
-    ).expect("No TLS errors starting store_actor");
+    )
+    .expect("No TLS errors starting store_actor");
 
     let store_addr = store_actor.start();
 
@@ -132,6 +160,7 @@ fn main() {
                     .cookie_secure(true) // cookies require https
                     .cookie_name("sess"),
             ))
+            .resource("/example", |r| r.f(upload_example))
             .resource("/upload", |r| {
                 r.method(http::Method::POST).with(upload::upload)
             })
