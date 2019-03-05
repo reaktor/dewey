@@ -68,8 +68,6 @@ pub fn handle_multipart_item(
 pub fn upload(req: HttpRequest<State>) -> FutureResponse<HttpResponse> {
     use actix::Addr;
     use actix_web::error;
-    use crate::object::ObjectStore;
-    let store: Addr<ObjectStore> = req.state().store.clone();
 
     use crate::sessions::UserSession;
     use crate::{is_signed_in_guard, SigninState};
