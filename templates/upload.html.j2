@@ -15,10 +15,10 @@
 <br>
 <a href="/static/uploads">Uploads</a>
 <script>
-  function upload(input){
-    fetch("/upload_url")
+  function upload(input) {
+    fetch("/api/v0/upload/url")
       .then(resp => resp.json())
-      .then(({url}) => {
+      .then(({url, key}) => {
         var xhr = new XMLHttpRequest();
         var formElt = input.parentElement;
         var progressElt = formElt.querySelector(".progress");
@@ -32,7 +32,15 @@
         }
         xhr.upload.onload = function(e) {
           // is done uploading
-          console.log('file uploaded')
+          fetch("/api/v0/upload/complete", {
+            method: "POST",
+              body: JSON.stringify({ key }),
+              headers: {
+                'Content-Type': 'application/json'
+              }
+          })
+          .then(body => body.json())
+          .then(res => console.log("Upload complete", {res}))
           progressElt.innerText = "100% Complete";
           formElt.file.value = null;
         }

@@ -76,11 +76,10 @@ pub fn start() {
                     .cookie_name("sess"),
             ))
             .resource("/example", |r| r.f(upload_example))
-            .resource("/upload", |r| {
-                r.method(http::Method::POST).with(upload::upload)
-            })
-            .resource("/upload_url", |r| {
-                r.method(http::Method::GET).with(upload::upload_url)
+            .scope("/api", |scope: actix_web::Scope<State>| {
+                scope.nested("/v0", |scope: actix_web::Scope<State>| {
+                    scope.nested("/upload", upload::upload_scope)
+                })
             })
             .scope("/login", session_routes::login_scope)
             .resource("/logout", |r| r.f(session_routes::logout_endpoint))

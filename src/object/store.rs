@@ -2,6 +2,7 @@ use ::actix::prelude::*;
 use ::actix_web::{error, FutureResponse, Result};
 
 use futures::future::{self, Future};
+use futures::stream::Stream;
 
 use rusoto_core::request::{HttpClient, TlsError};
 use rusoto_core::{self, Region};
@@ -9,9 +10,11 @@ use rusoto_credential::{ProvideAwsCredentials, StaticProvider};
 use rusoto_s3::util::{PreSignedRequest, PreSignedRequestOption};
 use rusoto_s3::{self, S3Client, S3};
 
+use std::sync::Arc;
+
 /// This is object store actor
 pub struct ObjectStore {
-    s3: S3Client,
+    s3: Arc<S3Client>,
     creds: StaticProvider,
     region: Region,
     pending_bucket: String,
@@ -74,7 +77,7 @@ impl ObjectStore {
         Ok(ObjectStore {
             creds: creds,
             region: region,
-            s3: s3,
+            s3: Arc::new(s3),
             pending_bucket: pending_bucket,
             collect_bucket: collect_bucket,
         })
@@ -136,4 +139,105 @@ impl Handler<GetPendingPutUrl> for ObjectStore {
                 }),
         )
     }
+}
+
+/// When you just gotta get that file into the cloud,
+/// then figure out where it goes later.
+pub struct FinalizeObject {
+    pub key: String,
+}
+
+pub struct StoredObject {
+    pub key: String,
+    pub bucket: String,
+}
+
+impl Message for FinalizeObject {
+    type Result = Result<StoredObject>;
+}
+
+impl Handler<FinalizeObject> for ObjectStore {
+    type Result = ResponseFuture<StoredObject, actix_web::Error>;
+
+    fn handle(&mut self, msg: FinalizeObject, _: &mut Self::Context) -> Self::Result {
+        let region = self.region.clone();
+        let collect_bucket = self.collect_bucket.clone();
+        let pending_bucket = self.pending_bucket.clone();
+        let pending_bucket_1 = self.pending_bucket.clone();
+        let s3_client = self.s3.clone();
+        let s3_client_1 = self.s3.clone();
+        let key = msg.key.clone();
+
+        Box::new(
+            {
+                // first hash the object file
+                let pending_bucket = pending_bucket_1;
+                let mut get_object_request = rusoto_s3::GetObjectRequest::default();
+                get_object_request.key = key;
+                get_object_request.bucket = pending_bucket;
+
+                s3_client
+                    .get_object(get_object_request)
+                    .map_err(|e| error::ErrorNotFound(e))
+                    .and_then(|obj: rusoto_s3::GetObjectOutput| {
+                        use ring::digest::{Context, SHA256};
+                        match obj.body {
+                            Some(stream) => {
+                                let context = Context::new(&SHA256);
+                                future::Either::A(
+                                    stream
+                                        .fold(context, |mut ctx: Context, bytes: Vec<u8>| {
+                                            ctx.update(&bytes[..]);
+                                            future::ok::<_, std::io::Error>(ctx)
+                                        })
+                                        .map(|ctx| {
+                                            let dig = ctx.finish();
+                                            // create the key
+                                            format!("sha256-{}", hex(dig.as_ref()))
+                                        })
+                                        .map_err(|_| {
+                                            error::ErrorInternalServerError(
+                                                "Error hashing object from s3",
+                                            )
+                                        }),
+                                )
+                            }
+                            None => future::Either::B(future::err(error::ErrorNotFound(
+                                "Body not found for s3 object",
+                            ))),
+                        }
+                    })
+            }
+            .and_then(move |key: String| {
+                // move the object file
+                let mut copy_object_req = rusoto_s3::CopyObjectRequest::default();
+
+                copy_object_req.bucket = collect_bucket.clone();
+                copy_object_req.key = key.clone();
+                copy_object_req.copy_source = format!("{}/{}", pending_bucket, msg.key);
+
+                s3_client_1
+                    .copy_object(copy_object_req)
+                    .map_err(|e| {
+                        error::ErrorInternalServerError(format!("Failed to copy s3 object {:?}", e))
+                    })
+                    .map(move |out| {
+                        info!("Copied object! {:?}", out);
+                        StoredObject {
+                            bucket: collect_bucket,
+                            key: key,
+                        }
+                    })
+            }),
+        )
+    }
+}
+
+fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut s = String::new();
+    for &byte in bytes {
+        write!(&mut s, "{:x}", byte).expect("Unable to write");
+    }
+    s
 }
