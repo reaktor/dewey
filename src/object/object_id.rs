@@ -1,6 +1,5 @@
 /// Represents a ObjectId
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(DieselNewType)]
+#[derive(Debug, Clone, Serialize, Deserialize, DieselNewType)]
 pub struct ObjectId(String);
 
 use std::fmt;
@@ -11,8 +10,8 @@ impl fmt::Display for ObjectId {
     }
 }
 
-use crate::db::{db_error, Fetch};
 use super::ObjectRow;
+use crate::db::{db_error, Fetch};
 use actix_web::Result;
 use diesel::prelude::*;
 use diesel::PgConnection;

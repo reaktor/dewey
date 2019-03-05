@@ -22,13 +22,16 @@ pub struct Page<'a> {
     pub flashes: Vec<Flash>,
 }
 
-impl <'a> Default for Page<'a> {
+impl<'a> Default for Page<'a> {
     fn default() -> Self {
-        Page { user_opt: None, flashes: Vec::new() }
+        Page {
+            user_opt: None,
+            flashes: Vec::new(),
+        }
     }
 }
 
-impl <'a> Page<'a> {
+impl<'a> Page<'a> {
     pub fn info<T: Into<String>>(&mut self, message: T) {
         self.flashes.push(Flash::new(message, 2));
     }
@@ -48,7 +51,7 @@ pub struct HelloTemplate<'a> {
 
 #[derive(Template)] // this will generate the code...
 #[template(path = "upload.html.j2")] // using the template in this path, relative
-                                    // to the templates dir in the crate root
+                                     // to the templates dir in the crate root
 pub struct UploadTemplate<'a> {
     // the name of the struct can be anything
     pub page: Page<'a>, // the field name should match the variable name

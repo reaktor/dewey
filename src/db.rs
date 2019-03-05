@@ -1,5 +1,5 @@
 //! Db executor actor
-use ::actix::prelude::*;
+use actix::prelude::*;
 use actix_web::{error, Error, Result};
 use diesel::insert_into;
 use diesel::prelude::*;

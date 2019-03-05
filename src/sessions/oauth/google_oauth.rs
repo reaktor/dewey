@@ -1,17 +1,17 @@
+use crate::state::State;
 use actix_web::client;
 use actix_web::HttpMessage;
 use actix_web::{error, FutureResponse};
 use futures::future;
 use futures::Future;
 
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Duration, Utc};
 
 #[derive(Clone, Debug)]
 pub struct GoogleAccessToken {
     pub access_token: String,
     pub expires_at: DateTime<Utc>,
 }
-
 
 #[derive(Deserialize, Debug)]
 struct GoogleTokenAuthCodeJson {
@@ -34,21 +34,21 @@ pub enum ExchangeResult {
     },
 }
 
-pub fn exchange_code_for_token(code: &str) -> FutureResponse<ExchangeResult> {
+pub fn exchange_code_for_token(state: &State, code: &str) -> FutureResponse<ExchangeResult> {
     info!("exchange_code_for_token");
     // Construct a request against http://localhost:8020/token, the access token endpoint
-    let redirect_uri = format!("{}/login/google/callback", dotenv!("ROOT_HOST"));
+    let redirect_uri = &format!("https://{}/login/google/callback", state.config.http_host());
 
-    let client_id = dotenv!("GOOGLE_OAUTH_CLIENT_ID");
-    let client_secret = dotenv!("GOOGLE_OAUTH_CLIENT_SECRET");
+    let client_id = state.config.google_oauth_client_id();
+    let client_secret = state.config.google_oauth_client_secret();
     let google_token_endpoint = "https://www.googleapis.com/oauth2/v4/token";
 
     // https://developers.google.com/identity/protocols/OAuth2WebServer#offline
     let params = [
-        ("code", code.as_ref()),
+        ("code", code),
         ("client_id", client_id),
         ("client_secret", client_secret),
-        ("redirect_uri", &redirect_uri),
+        ("redirect_uri", redirect_uri),
         ("grant_type", "authorization_code"),
     ];
 
@@ -119,9 +119,12 @@ struct GoogleTokenRefresh {
     pub token_type: String,   // "Bearer"
 }
 
-pub fn refresh_google_token(refresh_token: &str) -> FutureResponse<GoogleAccessToken> {
-    let client_id = dotenv!("GOOGLE_OAUTH_CLIENT_ID");
-    let client_secret = dotenv!("GOOGLE_OAUTH_CLIENT_SECRET");
+pub fn refresh_google_token(
+    state: &State,
+    refresh_token: &str,
+) -> FutureResponse<GoogleAccessToken> {
+    let client_id = state.config.google_oauth_client_id();
+    let client_secret = state.config.google_oauth_client_secret();
     let google_token_endpoint = "https://www.googleapis.com/oauth2/v4/token";
     // let google_token_endpoint = "http://httpbin.org/post";
 

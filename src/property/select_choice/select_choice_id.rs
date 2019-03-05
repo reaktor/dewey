@@ -1,6 +1,5 @@
 /// Represents a SelectChoiceId
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(DieselNewType)]
+#[derive(Debug, Clone, Serialize, Deserialize, DieselNewType)]
 pub struct SelectChoiceId(i64);
 
 use std::fmt;

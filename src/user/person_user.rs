@@ -1,5 +1,5 @@
 use super::{User, UserId, UserKind};
-use ::actix_web::{error, Result};
+use actix_web::{error, Result};
 
 /// Valid User Session comprises of the session's user_id and the user's version
 #[derive(Clone, Debug, Serialize, Deserialize)]

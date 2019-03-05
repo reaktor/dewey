@@ -1,4 +1,4 @@
-use ::actix::prelude::*;
+use actix::prelude::*;
 use futures::stream::Stream;
 use rusoto_core::request::{HttpClient, TlsError};
 use rusoto_core::{self, Region};

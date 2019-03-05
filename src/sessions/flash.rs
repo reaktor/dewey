@@ -1,4 +1,4 @@
-use actix_web::middleware::session::{SessionStorage, RequestSession, Session};
+use actix_web::middleware::session::{RequestSession, Session, SessionStorage};
 use actix_web::Result;
 
 use crate::app::templates::Page;
@@ -23,7 +23,7 @@ impl SessionFlash for Session {
         Ok(())
     }
 
-    fn apply_flash(&self, page: &mut Page) -> Result<()>  {
+    fn apply_flash(&self, page: &mut Page) -> Result<()> {
         let value = self.get::<Vec<String>>(FLASH_MESSAGES_KEY)?;
         if let Some(messages) = value {
             for message in messages {

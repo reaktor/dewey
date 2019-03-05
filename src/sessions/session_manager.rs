@@ -1,7 +1,6 @@
 //! Redis executor actor
-use ::actix::prelude::*;
-use actix_web::*;
-use std::io;
+use actix::prelude::*;
+use actix_web::FutureResponse;
 
 use actix_redis::*;
 
@@ -19,7 +18,7 @@ use futures::future::{Either, Future};
 
 use std::fmt::{Debug, Display};
 
-use ::actix::prelude::ResponseFuture;
+use actix::prelude::ResponseFuture;
 use actix_redis::{Command, RespValue};
 use actix_web::{error, Error, Result};
 
@@ -84,7 +83,7 @@ impl Handler<CreateSession> for SessionManager {
                               given_name,
                               display_name,
                               email_address,
-                              photo_url
+                              photo_url,
                           }| {
                         if let Some(refresh_token) = msg.refresh_token {
                             Either::A(
@@ -105,9 +104,14 @@ impl Handler<CreateSession> for SessionManager {
                                             "Error upserting Google User & Token",
                                         )
                                     })
-                                    .map(move |(person, key)| {
-                                        CreateSessionResult::Success(UserSession { key, person })
-                                    })
+                                    .map(
+                                        move |(person, key)| {
+                                            CreateSessionResult::Success(UserSession {
+                                                key,
+                                                person,
+                                            })
+                                        },
+                                    )
                                 }),
                             )
                         } else {
