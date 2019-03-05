@@ -11,3 +11,10 @@ The objective is to enable these professionals the opportunity to quickly index 
 ## Reference SQL
 
 ![Database diagram](docs/images/2019-02-26-SQL-Database-diagram.png)
+
+
+## Autoreload
+
+Referencing [Actix_web Autoreload docs](https://actix.rs/docs/autoreload/), install both `systemfd` and `cargo-watch` with `cargo install systemfd cargo-watch`.
+
+Then, you will be able to run `bash ./dev-watch.sh` to enable autoreloading actix-web server.

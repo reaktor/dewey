@@ -7,7 +7,8 @@ use actix_web::{
 
 use std::fs;
 use std::io::Write;
-use super::State;
+
+use crate::State;
 
 /// from payload, save file
 pub fn save_file(field: multipart::Field<dev::Payload>) -> Box<Future<Item = i64, Error = Error>> {
@@ -65,16 +66,31 @@ pub fn handle_multipart_item(
 }
 
 pub fn upload(req: HttpRequest<State>) -> FutureResponse<HttpResponse> {
+    use actix::Addr;
+    use actix_web::error;
+    use crate::object::ObjectStore;
+    let store: Addr<ObjectStore> = req.state().store.clone();
+
+    use crate::sessions::UserSession;
+    use crate::{is_signed_in_guard, SigninState};
+
     Box::new(
-        req.multipart()
-            .map_err(error::ErrorInternalServerError)
-            .map(handle_multipart_item)
-            .flatten()
-            .collect()
-            .map(|sizes| HttpResponse::Ok().json(sizes))
-            .map_err(|e| {
-                println!("failed: {}", e);
-                e
+        is_signed_in_guard(&req)
+            .and_then(|state| match state {
+                SigninState::Valid(session) => Ok(session),
+                _ => Err(error::ErrorForbidden("Must log in to upload")),
+            })
+            .and_then(move |session: UserSession| {
+                req.multipart()
+                    .map_err(error::ErrorInternalServerError)
+                    .map(handle_multipart_item)
+                    .flatten()
+                    .collect()
+                    .map(|sizes| HttpResponse::Ok().json(sizes))
+                    .map_err(|e| {
+                        println!("failed: {}", e);
+                        e
+                    })
             }),
     )
 }

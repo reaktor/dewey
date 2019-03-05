@@ -45,3 +45,12 @@ pub struct HelloTemplate<'a> {
     pub page: Page<'a>, // the field name should match the variable name
                         // in your template
 }
+
+#[derive(Template)] // this will generate the code...
+#[template(path = "upload.html.j2")] // using the template in this path, relative
+                                    // to the templates dir in the crate root
+pub struct UploadTemplate<'a> {
+    // the name of the struct can be anything
+    pub page: Page<'a>, // the field name should match the variable name
+                        // in your template
+}

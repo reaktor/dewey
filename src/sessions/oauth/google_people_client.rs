@@ -1,5 +1,3 @@
-extern crate reqwest;
-
 use super::google_oauth::GoogleAccessToken;
 
 use actix_web::client;
