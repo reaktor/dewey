@@ -1,20 +1,20 @@
 use askama::Template; // bring trait in scope
 
-use actix_web::middleware::session::{SessionStorage, RequestSession};
+use actix::{Actor, SyncArbiter};
+use actix_redis::{RedisActor, RedisSessionBackend};
+use actix_web::middleware::session::{RequestSession, SessionStorage};
 use actix_web::{http, Error};
 use actix_web::{middleware, server, App, HttpRequest, HttpResponse};
 use futures::Future;
-use actix::{Actor, SyncArbiter};
-use actix_redis::{RedisSessionBackend, RedisActor};
 
+use super::db::DbExecutor;
 use super::logging;
 use super::sessions;
-use super::db::DbExecutor;
 pub use super::State;
 
+use sessions::flash::SessionFlash;
 use sessions::session_manager::SessionManager;
-use sessions::session_routes::{self, is_signed_in_guard, SigninState};
-use sessions::flash::SessionFlash; // enable inserting and applying flash messages to the page
+use sessions::session_routes::{self, is_signed_in_guard, SigninState}; // enable inserting and applying flash messages to the page
 
 pub mod templates;
 mod upload;
@@ -101,7 +101,6 @@ pub fn start() {
     info!("                     {}", dotenv!("ROOT_HOST"));
     server.run();
 }
-
 
 fn index(req: &HttpRequest<State>) -> Box<Future<Item = HttpResponse, Error = Error>> {
     use templates::*;
