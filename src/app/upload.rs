@@ -92,3 +92,40 @@ pub fn upload(req: HttpRequest<State>) -> FutureResponse<HttpResponse> {
             }),
     )
 }
+
+#[derive(Serialize)]
+struct URL {
+    url: String,
+}
+
+pub fn upload_url(req: HttpRequest<State>) -> FutureResponse<HttpResponse> {
+    use actix::Addr;
+    use actix_web::error;
+    use crate::object::ObjectStore;
+    use crate::object::store;
+    let store_actor: Addr<ObjectStore> = req.state().store.clone();
+
+    use crate::sessions::UserSession;
+    use crate::{is_signed_in_guard, SigninState};
+
+    Box::new(
+        is_signed_in_guard(&req)
+            .and_then(|state| match state {
+                SigninState::Valid(session) => Ok(session),
+                _ => Err(error::ErrorForbidden("Must log in to upload")),
+            })
+            .and_then(move |session: UserSession| {
+                store_actor.send(store::GetPutUrl {
+                    bucket: "collect".to_string(),
+                }).map_err(|_| error::ErrorBadRequest("Failed to get put url"))
+                .and_then(|res| res).map_err(|_| error::ErrorBadRequest("Failed to get put url"))
+            })
+            .map(|put_url: store::PutUrl| {
+                HttpResponse::Ok()
+                    .header(actix_web::http::header::CONTENT_TYPE, "application/json")
+                    .json(URL {
+                        url: put_url.url,
+                    })
+            })
+    )
+}

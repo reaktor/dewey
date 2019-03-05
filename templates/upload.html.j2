@@ -16,24 +16,30 @@
 <a href="/static/uploads">Uploads</a>
 <script>
   function upload(input){
-    var xhr = new XMLHttpRequest();
-    var formElt = input.parentElement;
-    var progressElt = formElt.querySelector(".progress");
-    xhr.upload.onprogress = function(e) {
-      // progress uploading
-      let amountDone = e.loaded / e.total;
-      let percentage = Math.round(1000 * amountDone) * 0.1;
-      progressElt.innerText = String(percentage).slice(0,4) + "%";
-    }
-    xhr.upload.onload = function(e) {
-      // is done uploading
-      console.log('file uploaded')
-      progressElt.innerText = "100% Complete";
-      formElt.file.value = null;
-    }
-    xhr.open("POST", "/upload", true);
-    xhr.send(new FormData(formElt));
-    return false;
+    fetch("/upload_url")
+      .then(resp => resp.json())
+      .then(({url}) => {
+        var xhr = new XMLHttpRequest();
+        var formElt = input.parentElement;
+        var progressElt = formElt.querySelector(".progress");
+        var fileElt = formElt.querySelector("[name=file]");
+        var file = fileElt.file || fileElt.files[0];
+        xhr.upload.onprogress = function(e) {
+          // progress uploading
+          let amountDone = e.loaded / e.total;
+          let percentage = Math.round(1000 * amountDone) * 0.1;
+          progressElt.innerText = String(percentage).slice(0,4) + "%";
+        }
+        xhr.upload.onload = function(e) {
+          // is done uploading
+          console.log('file uploaded')
+          progressElt.innerText = "100% Complete";
+          formElt.file.value = null;
+        }
+        xhr.open("PUT", url, true);
+        xhr.send(file);
+        return false;
+      })
   }
 </script>
 {% endblock %}

@@ -78,6 +78,9 @@ pub fn start() {
             .resource("/upload", |r| {
                 r.method(http::Method::POST).with(upload::upload)
             })
+            .resource("/upload_url", |r| {
+                r.method(http::Method::GET).with(upload::upload_url)
+            })
             .scope("/login", session_routes::login_scope)
             .resource("/logout", |r| r.f(session_routes::logout_endpoint))
             .resource("/", |r| r.f(index))

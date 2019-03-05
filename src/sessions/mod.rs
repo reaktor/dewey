@@ -1,7 +1,7 @@
 use super::db;
 
 mod oauth;
-mod rand_util;
+pub mod rand_util;
 
 mod user_session;
 pub use user_session::UserSession;
