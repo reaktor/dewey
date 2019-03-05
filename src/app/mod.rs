@@ -44,8 +44,9 @@ pub fn start() {
     let store_actor = ObjectStore::new_with_s3_credentials(
         dotenv!("S3_ACCESS_KEY_ID"),
         dotenv!("S3_SECRET_ACCESS_KEY"),
+        dotenv!("S3_BUCKET_PREFIX"),
     )
-    .expect("No TLS errors starting store_actor");
+    .expect("No TLS errors or Bucket creation errors starting store_actor");
 
     let store_addr = store_actor.start();
 

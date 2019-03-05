@@ -66,7 +66,6 @@ pub fn handle_multipart_item(
 }
 
 pub fn upload(req: HttpRequest<State>) -> FutureResponse<HttpResponse> {
-    use actix::Addr;
     use actix_web::error;
 
     use crate::sessions::UserSession;
@@ -96,6 +95,7 @@ pub fn upload(req: HttpRequest<State>) -> FutureResponse<HttpResponse> {
 #[derive(Serialize)]
 struct URL {
     url: String,
+    key: String,
 }
 
 pub fn upload_url(req: HttpRequest<State>) -> FutureResponse<HttpResponse> {
@@ -115,16 +115,17 @@ pub fn upload_url(req: HttpRequest<State>) -> FutureResponse<HttpResponse> {
                 _ => Err(error::ErrorForbidden("Must log in to upload")),
             })
             .and_then(move |session: UserSession| {
-                store_actor.send(store::GetPutUrl {
-                    bucket: "collect".to_string(),
+                store_actor.send(store::GetPendingPutUrl {
+                    user_id: session.person.user_id,
                 }).map_err(|_| error::ErrorBadRequest("Failed to get put url"))
                 .and_then(|res| res).map_err(|_| error::ErrorBadRequest("Failed to get put url"))
             })
-            .map(|put_url: store::PutUrl| {
+            .map(|put_url: store::PendingPutUrl| {
                 HttpResponse::Ok()
                     .header(actix_web::http::header::CONTENT_TYPE, "application/json")
                     .json(URL {
                         url: put_url.url,
+                        key: put_url.key,
                     })
             })
     )
