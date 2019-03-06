@@ -1,0 +1,60 @@
+diff --git a/src/db/schema.rs b/src/db/schema.rs
+index 8be4c34..8d9381c 100644
+--- a/src/db/schema.rs
++++ b/src/db/schema.rs
+@@ -1,6 +1,9 @@
++use crate::property::{PropertyType, PropertyTypeMapping};
++use crate::user::{UserKind, UserKindMapping};
++
+ table! {
+     choice_values (object_id, property_id, value_id) {
+         object_id -> Text,
+         property_id -> Int8,
+         value_id -> Int8,
+         created_by -> Int8,
+@@ -50,19 +53,21 @@ table! {
+         created_at -> Timestamptz,
+         extension -> Text,
+     }
+ }
+ 
+ table! {
++    use diesel::sql_types::{Float4, Int8, Text, Timestamptz};
++    use super::PropertyTypeMapping;
+     properties (id) {
+         id -> Int8,
+         created_by -> Int8,
+         created_at -> Timestamptz,
+         ord -> Float4,
+         display -> Text,
+-        property_type -> Property_type,
++        property_type -> PropertyTypeMapping,
+     }
+ }
+ 
+ table! {
+     property_value_choices (id) {
+         id -> Int8,
+@@ -113,19 +118,21 @@ table! {
+         refresh_token -> Text,
+         token_expiration -> Timestamptz,
+     }
+ }
+ 
+ table! {
++    use diesel::sql_types::{Int8, Nullable, Text};
++    use super::UserKindMapping;
+     users (id) {
+         id -> Int8,
+         google_resource_id -> Nullable<Text>,
+         full_name -> Text,
+         display_name -> Text,
+         public_email -> Nullable<Text>,
+-        kind -> User_kind,
++        kind -> UserKindMapping,
+         photo_url -> Nullable<Text>,
+     }
+ }
+ 
+ joinable!(choice_values -> objects (object_id));
+ joinable!(choice_values -> properties (property_id));
