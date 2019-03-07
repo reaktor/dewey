@@ -1,11 +1,11 @@
-use chrono::{DateTime, Utc};
 use crate::user;
+use chrono::{DateTime, Utc};
 
-use super::schema::users;
 use super::schema::user_tokens;
+use super::schema::users;
 
 #[derive(Insertable)]
-#[table_name="users"]
+#[table_name = "users"]
 pub struct NewUser<'a> {
     pub google_resource_id: Option<&'a str>,
     pub full_name: &'a str,
@@ -27,7 +27,7 @@ pub struct UserToken {
 }
 
 #[derive(Insertable)]
-#[table_name="user_tokens"]
+#[table_name = "user_tokens"]
 pub struct NewUserToken<'a> {
     pub user_id: user::UserId,
     pub google_resource_id: &'a str,

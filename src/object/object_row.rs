@@ -1,4 +1,4 @@
-use ::chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc};
 
 use super::{Object, ObjectId};
 use crate::user::UserId;

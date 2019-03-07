@@ -9,6 +9,7 @@ extern crate diesel_derive_enum;
 extern crate serde_derive;
 #[macro_use]
 extern crate redis_async;
+extern crate actix;
 extern crate actix_web;
 extern crate dotenv;
 #[macro_use]
@@ -17,54 +18,92 @@ extern crate dotenv_codegen;
 extern crate log;
 extern crate askama; // for the Template trait and custom derive macro
 
+mod app;
+pub mod config;
+mod db;
 pub mod object;
 pub mod property;
-pub mod user;
-mod app;
-
-use actix::Addr;
-use actix_redis::RedisActor;
-
-mod db;
-use db::DbExecutor;
-use clap::{App, Arg, SubCommand};
-
 mod sessions;
+pub mod state;
+pub mod user;
+
 use sessions::flash::SessionFlash;
 use sessions::session_manager::SessionManager;
-use sessions::session_routes::{self, is_signed_in_guard, SigninState}; // enable inserting and applying flash messages to the page
 
-pub use object::store;
+// enable inserting and applying flash messages to the page
+use sessions::session_routes::{is_signed_in_guard, SigninState};
+
+use clap::{App, AppSettings, Arg, SubCommand};
+
 use self::store::ObjectStore;
+pub use object::store;
 
-/// State with DbExecutor address
-pub struct State {
-    db: Addr<DbExecutor>,
-    mem: Addr<RedisActor>,
-    sessions: Addr<SessionManager>,
-    store: Addr<ObjectStore>,
-}
+pub use config::Configuration;
+pub use state::State;
 
 mod logging;
 
 fn main() {
+    if let Err(dotenv_error) = dotenv::dotenv() {
+        warn!("Unable to process the .env file: {}", dotenv_error);
+    }
+    let config = Configuration::new().from_environment();
+
     let args = App::new("Dewey Collect")
-        .version(dotenv!("CARGO_PKG_VERSION"))
-        .author(dotenv!("CARGO_PKG_AUTHORS"))
+        .version(env!("CARGO_PKG_VERSION"))
+        .author(env!("CARGO_PKG_AUTHORS"))
         .about("File collection and organization")
-        .arg(Arg::with_name("debug")
-             .short("d")
-             .help("Verbose output for troubleshooting"))
-        .subcommand(SubCommand::with_name("start")
-                    .about("Starts the Dewey Collect Web Application Server")
-                    .arg(Arg::with_name("port")
-                         .short("p")
-                         .value_name("PORT")
-                         .help("Specify the port to start on [default: 8088]")))
+        .setting(AppSettings::ArgRequiredElseHelp)
+        .arg(
+            Arg::with_name("DEBUG")
+                .short("d")
+                .long("debug")
+                .help("Verbose output for troubleshooting"),
+        )
+        .subcommand(
+            SubCommand::with_name("start")
+                .about("Starts the Dewey Collect Web Application Server")
+                .arg(
+                    Arg::with_name("PORT")
+                        .short("p")
+                        .long("port")
+                        .value_name("PORT")
+                        .help(&format!(
+                            "Specify the port to start on [default: {}]",
+                            config.http_port()
+                        )),
+                )
+                .arg(
+                    Arg::with_name("HOST")
+                        .short("h")
+                        .long("host")
+                        .value_name("HOST")
+                        .help(&format!(
+                            "Specify the public hostname for the server [default: {}]",
+                            config.http_host()
+                        )),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("sessions").about("Displays information about active sessions"),
+        )
         .get_matches();
 
     match args.subcommand_name() {
-        Some("start") => app::start(),
+        Some("start") => {
+            let _sys = actix::System::new("dewey");
+            let start_args = args.subcommand_matches("start").unwrap();
+            match config.from_arguments(start_args) {
+                Ok(config) => {
+                    println!("Configuration: {:?}", config);
+                    app::start(State::new(&config))
+                }
+                Err(error) => println!("\nInvalid server configuration: {}\n", error),
+            };
+        }
+        Some("sessions") => {
+            unimplemented!("Sessions not yet implemented");
+        }
         _ => {}
     }
 }

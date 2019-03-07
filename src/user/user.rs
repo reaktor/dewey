@@ -1,6 +1,6 @@
 use super::{UserId, UserKind, UserRow};
 
-/// The common set of methods for a user 
+/// The common set of methods for a user
 pub trait User {
     fn id(&self) -> UserId;
     fn kind(&self) -> &UserKind;
@@ -11,11 +11,11 @@ pub trait User {
 }
 
 use crate::db::Fetch;
-use diesel::PgConnection;
 use actix_web::Result;
+use diesel::PgConnection;
 
 /// Everything that implements User also implements Fetch<UserRow>
-impl <U: User> Fetch<UserRow> for U {
+impl<U: User> Fetch<UserRow> for U {
     fn fetch(&self, conn: &PgConnection) -> Result<UserRow> {
         self.id().fetch(&conn)
     }

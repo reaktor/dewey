@@ -1,6 +1,5 @@
 /// Represents a PropertyId
-#[derive(DieselNewType)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(DieselNewType, Debug, Clone, Serialize, Deserialize)]
 pub struct PropertyId(i64);
 
 use std::fmt;
