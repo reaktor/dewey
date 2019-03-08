@@ -1,20 +1,20 @@
 use askama::Template; // bring trait in scope
 
-use actix_web::middleware::session::{SessionStorage, RequestSession};
+use actix::{Actor, SyncArbiter};
+use actix_redis::{RedisActor, RedisSessionBackend};
+use actix_web::middleware::session::{RequestSession, SessionStorage};
 use actix_web::{http, Error};
 use actix_web::{middleware, server, App, HttpRequest, HttpResponse};
 use futures::Future;
-use actix::{Actor, SyncArbiter};
-use actix_redis::{RedisSessionBackend, RedisActor};
 
+use super::db::DbExecutor;
 use super::logging;
 use super::sessions;
-use super::db::DbExecutor;
 pub use super::State;
 
+use sessions::flash::SessionFlash;
 use sessions::session_manager::SessionManager;
-use sessions::session_routes::{self, is_signed_in_guard, SigninState};
-use sessions::flash::SessionFlash; // enable inserting and applying flash messages to the page
+use sessions::session_routes::{self, is_signed_in_guard, SigninState}; // enable inserting and applying flash messages to the page
 
 pub mod templates;
 mod upload;
@@ -44,8 +44,9 @@ pub fn start() {
     let store_actor = ObjectStore::new_with_s3_credentials(
         dotenv!("S3_ACCESS_KEY_ID"),
         dotenv!("S3_SECRET_ACCESS_KEY"),
+        dotenv!("S3_BUCKET_PREFIX"),
     )
-    .expect("No TLS errors starting store_actor");
+    .expect("No TLS errors or Bucket creation errors starting store_actor");
 
     let store_addr = store_actor.start();
 
@@ -75,8 +76,10 @@ pub fn start() {
                     .cookie_name("sess"),
             ))
             .resource("/example", |r| r.f(upload_example))
-            .resource("/upload", |r| {
-                r.method(http::Method::POST).with(upload::upload)
+            .scope("/api", |scope: actix_web::Scope<State>| {
+                scope.nested("/v0", |scope: actix_web::Scope<State>| {
+                    scope.nested("/upload", upload::upload_scope)
+                })
             })
             .scope("/login", session_routes::login_scope)
             .resource("/logout", |r| r.f(session_routes::logout_endpoint))
@@ -97,7 +100,6 @@ pub fn start() {
     info!("                     {}", dotenv!("ROOT_HOST"));
     server.run();
 }
-
 
 fn index(req: &HttpRequest<State>) -> Box<Future<Item = HttpResponse, Error = Error>> {
     use templates::*;
