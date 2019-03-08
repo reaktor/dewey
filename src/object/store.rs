@@ -82,6 +82,16 @@ impl ObjectStore {
             collect_bucket: collect_bucket,
         })
     }
+
+    fn get_credentials(
+        &self,
+    ) -> ResponseFuture<rusoto_credential::AwsCredentials, actix_web::Error> {
+        Box::new(
+            self.creds
+                .credentials()
+                .map_err(|_| error::ErrorInternalServerError("Error retrieving S3 credentials")),
+        )
+    }
 }
 
 /// When you just gotta get that file into the cloud,
@@ -106,38 +116,35 @@ impl Handler<GetPendingPutUrl> for ObjectStore {
     fn handle(&mut self, msg: GetPendingPutUrl, _: &mut Self::Context) -> Self::Result {
         let region = self.region.clone();
         let pending_bucket = self.pending_bucket.clone();
-        Box::new(
-            self.creds
-                .credentials()
-                .map_err(|_| error::ErrorInternalServerError("Error retrieving S3 credentials"))
-                .map(move |credentials: rusoto_credential::AwsCredentials| {
-                    let mut put_object_req = rusoto_s3::PutObjectRequest::default();
-                    let pre_signed_req_opts = PreSignedRequestOption {
-                        // 20 second expiration
-                        expires_in: std::time::Duration::from_secs(20),
-                    };
+        Box::new(self.get_credentials().map(
+            move |credentials: rusoto_credential::AwsCredentials| {
+                let mut put_object_req = rusoto_s3::PutObjectRequest::default();
+                let pre_signed_req_opts = PreSignedRequestOption {
+                    // 20 second expiration
+                    expires_in: std::time::Duration::from_secs(20),
+                };
 
-                    put_object_req.bucket = pending_bucket;
-                    // TODO: Fix this for collisions and sort based on content hash
-                    // TODO: 1. Upload, 2. Hash 3. Merge with existing
-                    put_object_req.key = format!(
-                        "{}-{}-{}",
-                        chrono::Utc::now().format("%F"),
-                        msg.user_id,
-                        crate::sessions::rand_util::random_string(6)
-                    );
+                put_object_req.bucket = pending_bucket;
+                // TODO: Fix this for collisions and sort based on content hash
+                // TODO: 1. Upload, 2. Hash 3. Merge with existing
+                put_object_req.key = format!(
+                    "{}-{}-{}",
+                    chrono::Utc::now().format("%F"),
+                    msg.user_id,
+                    crate::sessions::rand_util::random_string(6)
+                );
 
-                    PendingPutUrl {
-                        url: put_object_req.get_presigned_url(
-                            &region,
-                            &credentials,
-                            &pre_signed_req_opts,
-                        ),
-                        bucket: put_object_req.bucket,
-                        key: put_object_req.key,
-                    }
-                }),
-        )
+                PendingPutUrl {
+                    url: put_object_req.get_presigned_url(
+                        &region,
+                        &credentials,
+                        &pre_signed_req_opts,
+                    ),
+                    bucket: put_object_req.bucket,
+                    key: put_object_req.key,
+                }
+            },
+        ))
     }
 }
 
