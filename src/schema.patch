@@ -3,8 +3,8 @@ index 8be4c34..8d9381c 100644
 --- a/src/db/schema.rs
 +++ b/src/db/schema.rs
 @@ -1,6 +1,9 @@
-+use crate::property::{PropertyType, PropertyTypeMapping};
-+use crate::user::{UserKind, UserKindMapping};
++use crate::property::PropertyTypeMapping;
++use crate::user::UserKindMapping;
 +
  table! {
      choice_values (object_id, property_id, value_id) {

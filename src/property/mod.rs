@@ -7,6 +7,8 @@ pub use select_choice::SelectChoiceId;
 mod property_id;
 pub use property_id::PropertyId;
 
+pub mod value;
+
 use crate::user::UserId;
 
 pub trait Property {

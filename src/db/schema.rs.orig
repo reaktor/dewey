@@ -1,6 +1,3 @@
-use crate::property::PropertyTypeMapping;
-use crate::user::UserKindMapping;
-
 table! {
     choice_values (object_id, property_id, value_id) {
         object_id -> Text,
@@ -22,15 +19,13 @@ table! {
 }
 
 table! {
-    use diesel::sql_types::{Float4, Int8, Text, Timestamptz};
-    use super::PropertyTypeMapping;
     properties (id) {
         id -> Int8,
         created_by -> Int8,
         created_at -> Timestamptz,
         ord -> Float4,
         display -> Text,
-        property_type -> PropertyTypeMapping,
+        property_type -> Property_type,
     }
 }
 
@@ -87,15 +82,13 @@ table! {
 }
 
 table! {
-    use diesel::sql_types::{Int8, Nullable, Text};
-    use super::UserKindMapping;
     users (id) {
         id -> Int8,
         google_resource_id -> Nullable<Text>,
         full_name -> Text,
         display_name -> Text,
         public_email -> Nullable<Text>,
-        kind -> UserKindMapping,
+        kind -> User_kind,
         photo_url -> Nullable<Text>,
     }
 }

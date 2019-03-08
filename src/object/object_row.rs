@@ -9,6 +9,7 @@ pub struct ObjectRow {
     pub created_by: UserId,
     pub created_at: DateTime<Utc>,
     pub extension: String,
+    pub level: i32,
 }
 
 impl Object for ObjectRow {
